@@ -79,9 +79,9 @@ a{color:var(--primary-l)}
 .pick input{width:auto}
 .actions-row{display:flex;gap:10px;justify-content:flex-end;margin-top:20px;flex-wrap:wrap}
 .sec-head{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--primary);border-bottom:1.5px solid var(--primary-l);padding-bottom:5px;margin:20px 0 12px}
-.parz-row{display:flex;gap:8px;align-items:center;margin-bottom:6px}
-.parz-row input{padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;min-width:0}
-.parz-row input:focus{outline:none;border-color:var(--primary-l);box-shadow:0 0 0 3px rgba(47,158,63,.12)}
+.parz-row,.amt-row{display:flex;gap:8px;align-items:center;margin-bottom:6px}
+.parz-row input,.amt-row input{padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;min-width:0}
+.parz-row input:focus,.amt-row input:focus{outline:none;border-color:var(--primary-l);box-shadow:0 0 0 3px rgba(47,158,63,.12)}
 .ck{display:flex;align-items:center;gap:8px;font-size:14px;margin-bottom:12px;cursor:pointer}
 .ck input{width:auto}
 .parz-hist{display:flex;justify-content:space-between;gap:8px;font-size:13px;padding:5px 0;border-top:1px solid var(--border)}

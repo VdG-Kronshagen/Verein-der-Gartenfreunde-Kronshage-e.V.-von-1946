@@ -120,12 +120,13 @@ function onSearch(v){ _q=String(v||'').toLowerCase().trim(); render(); }
 function render(){
   $('tab-mitglieder').classList.toggle('active', _view==='mitglieder');
   if($('tab-parzellen')) $('tab-parzellen').classList.toggle('active', _view==='parzellen');
+  if($('tab-aemter')) $('tab-aemter').classList.toggle('active', _view==='aemter');
   $('tab-verteiler').classList.toggle('active', _view==='verteiler');
-  $('view').innerHTML = _view==='verteiler' ? viewVerteiler() : _view==='parzellen' ? viewParzellen() : viewMitglieder();
+  $('view').innerHTML = _view==='verteiler' ? viewVerteiler() : _view==='parzellen' ? viewParzellen() : _view==='aemter' ? viewAemter() : viewMitglieder();
 }
 
 // ── Mitglieder ─────────────────────────────────────────────────────
-function matchM(m){ return [m.name,m.funktion,m.email,m.tel,m.adresse,m.note,(m.parzellen||[]).map(p=>p.nr).join(' ')].map(x=>String(x||'').toLowerCase()).join(' ').includes(_q); }
+function matchM(m){ return [m.name,m.funktion,m.email,m.tel,m.adresse,m.note,(m.parzellen||[]).map(p=>p.nr).join(' '),(m.aemter||[]).map(a=>a.amt).join(' ')].map(x=>String(x||'').toLowerCase()).join(' ').includes(_q); }
 function memberCard(m){ return `<div class="card">
       <h3>${esc(m.name||'(ohne Name)')}</h3>
       ${m.funktion?`<div class="sub">${esc(m.funktion)}</div>`:''}
@@ -135,7 +136,7 @@ function memberCard(m){ return `<div class="card">
       </div>
       ${m.adresse?`<div class="sub" style="margin-top:6px">📍 ${esc(m.adresse)}</div>`:''}
       ${m.note?`<div class="sub" style="margin-top:6px">${esc(m.note)}</div>`:''}
-      ${(currentParz(m)||m.sepaAktiv)?`<div class="links" style="margin-top:8px">${currentParz(m)?`<span class="chip">🌳 Parzelle ${esc(currentParz(m))}</span>`:''}${m.sepaAktiv?`<span class="chip">🏦 SEPA</span>`:''}</div>`:''}
+      ${(currentParz(m)||currentAmt(m)||m.sepaAktiv)?`<div class="links" style="margin-top:8px">${currentParz(m)?`<span class="chip">🌳 Parzelle ${esc(currentParz(m))}</span>`:''}${currentAmt(m)?`<span class="chip">🏅 ${esc(currentAmt(m))}</span>`:''}${m.sepaAktiv?`<span class="chip">🏦 SEPA</span>`:''}</div>`:''}
       <div class="actions">
         <button class="btn" onclick="GV.editMember('${m.id}')">Bearbeiten</button>
         <button class="x" title="Löschen" onclick="GV.askDelMember('${m.id}')">✕</button>
@@ -145,6 +146,7 @@ function leftCard(m){ return `<div class="card">
       <h3>${esc(m.name||'(ohne Name)')}</h3>
       <div class="sub">🚪 ausgetreten${m.austrittsdatum?' am '+fmtDateShort(m.austrittsdatum):''}</div>
       ${(m.parzellen&&m.parzellen.length)?`<div class="links" style="margin-top:8px">${m.parzellen.map(p=>`<span class="chip">🌳 ${esc(p.nr)} ${parzRange(p)}</span>`).join('')}</div>`:''}
+      ${(m.aemter&&m.aemter.length)?`<div class="links" style="margin-top:6px">${m.aemter.map(a=>`<span class="chip">🏅 ${esc(a.amt)} ${parzRange(a)}</span>`).join('')}</div>`:''}
       <div class="actions">
         <button class="btn" onclick="GV.editMember('${m.id}')">Ansehen</button>
         <button class="x" title="Endgültig löschen (auch Name)" onclick="GV.askDelMember('${m.id}')">✕</button>
@@ -193,6 +195,29 @@ function viewParzellen(){
     <div class="list">${cards}</div>
   </div>`;
 }
+// ── Ämter-Verlauf (aus allen Mitgliedern, inkl. ausgetretener) ──────
+function viewAemter(){
+  const map={};
+  members().forEach(m=>{ (m.aemter||[]).forEach(a=>{ if(!a.amt) return; (map[a.amt]=map[a.amt]||[]).push({name:m.name||'?', von:a.von||'', bis:a.bis||''}); }); });
+  let keys=Object.keys(map);
+  if(_q) keys=keys.filter(k=>String(k).toLowerCase().includes(_q) || map[k].some(h=>String(h.name).toLowerCase().includes(_q)));
+  keys.sort((a,b)=>String(a).localeCompare(String(b),'de',{sensitivity:'base'}));
+  const cards=keys.map(amt=>{
+    const hist=map[amt].slice().sort((a,b)=>String(a.von||'').localeCompare(String(b.von||'')));
+    const cur=hist.filter(h=>!h.bis).map(h=>h.name);
+    const rows=hist.map(h=>`<div class="parz-hist${!h.bis?' cur':''}"><span class="nm">${esc(h.name)}</span><span class="rg">${fmtDateShort(h.von)||'?'} – ${h.bis?fmtDateShort(h.bis):'heute'}</span></div>`).join('');
+    return `<div class="card">
+      <h3>🏅 ${esc(amt)}</h3>
+      <div class="sub">${cur.length?('Aktuell: '+esc(cur.join(', '))):'aktuell nicht besetzt'}</div>
+      <div style="margin-top:8px">${rows}</div>
+    </div>`;
+  }).join('') || `<div class="muted">${_q?'Keine Treffer.':'Noch keine Ämter erfasst – trag sie bei den Mitgliedern ein.'}</div>`;
+  return `<div class="sec">
+    <h2><span>🏅 Ämter-Verlauf</span></h2>
+    <div class="muted" style="margin-bottom:10px">Wer hatte wann welches Amt? Automatisch aus den Ämter-Einträgen der Mitglieder gebildet (inkl. ausgetretener).</div>
+    <div class="list">${cards}</div>
+  </div>`;
+}
 function parzRowHtml(p){ p=p||{};
   return `<div class="parz-row">
     <input class="pz-nr" placeholder="Parzelle Nr." value="${esc(p.nr||'')}" style="flex:1;min-width:70px">
@@ -208,6 +233,23 @@ function readParz(){
     bis:r.querySelector('.pz-bis').value||''
   })).filter(p=>p.nr).sort((a,b)=>String(a.von||'').localeCompare(String(b.von||'')));
 }
+const AEMTER=['1. Vorsitzende/r','2. Vorsitzende/r','Kassenwart/in','Schriftführer/in','Beisitzer/in','Gerätewart/in','Wertermittler/in','Vorstand'];
+function amtRowHtml(a){ a=a||{};
+  return `<div class="amt-row">
+    <input class="am-amt" list="amt-list" placeholder="Amt" value="${esc(a.amt||'')}" style="flex:1.4;min-width:110px">
+    <input class="am-von" type="date" value="${esc(a.von||'')}" title="von" style="flex:1">
+    <input class="am-bis" type="date" value="${esc(a.bis||'')}" title="bis (leer = aktuell)" style="flex:1">
+    <button type="button" class="x" title="Zeile entfernen" onclick="GV.delAmt(this)">✕</button>
+  </div>`;
+}
+function readAemter(){
+  return Array.from(document.querySelectorAll('.amt-row')).map(r=>({
+    amt:(r.querySelector('.am-amt').value||'').trim(),
+    von:r.querySelector('.am-von').value||'',
+    bis:r.querySelector('.am-bis').value||''
+  })).filter(a=>a.amt).sort((a,b)=>String(a.von||'').localeCompare(String(b.von||'')));
+}
+function currentAmt(m){ if(m.status==='ausgetreten') return ''; const as=Array.isArray(m.aemter)?m.aemter:[]; const open=as.filter(a=>!a.bis); return open.map(a=>a.amt).join(', '); }
 function currentParz(m){ if(m.status==='ausgetreten') return ''; const ps=Array.isArray(m.parzellen)?m.parzellen:[]; const open=ps.filter(p=>!p.bis); if(open.length) return open[open.length-1].nr; return ''; }
 function fmtDateShort(s){ if(!s) return ''; const p=String(s).split('-'); return p.length===3?`${p[2]}.${p[1]}.${p[0]}`:String(s); }
 function parzRange(p){ return `(${fmtDateShort(p.von)||'?'} – ${p.bis?fmtDateShort(p.bis):'heute'})`; }
@@ -222,9 +264,10 @@ function doAustritt(id){
   const d=(String(datum).trim())||def;
   const oldMail=String(m.email||'').toLowerCase().trim();
   const parz=(Array.isArray(m.parzellen)?m.parzellen:[]).map(p=>({nr:p.nr, von:p.von||'', bis:p.bis||d}));
+  const aem=(Array.isArray(m.aemter)?m.aemter:[]).map(a=>({amt:a.amt, von:a.von||'', bis:a.bis||d}));
   // Vollständig ersetzen → alle anderen Felder (Mail/Tel/Adresse/SEPA …) fallen weg
   saveMember({ id:m.id, name:m.name, status:'ausgetreten', austrittsdatum:d,
-    eintrittsdatum:m.eintrittsdatum||'', parzellen:parz, createdAt:m.createdAt||Date.now() });
+    eintrittsdatum:m.eintrittsdatum||'', parzellen:parz, aemter:aem, createdAt:m.createdAt||Date.now() });
   // Aus allen Verteilern entfernen
   if(oldMail){ lists().forEach(v=>{ const cur=normEmails(v.emails); if(cur.some(e=>e.toLowerCase()===oldMail)) saveListe(Object.assign({},v,{emails:cur.filter(e=>e.toLowerCase()!==oldMail)})); }); }
   closeModal(); render(); toast('Austritt eingetragen – persönliche Daten gelöscht.','ok');
@@ -249,6 +292,12 @@ function memberForm(m){
    <div id="m-parz">${(Array.isArray(m.parzellen)?m.parzellen:[]).map(parzRowHtml).join('')}</div>
    <button type="button" class="btn" onclick="GV.addParz()">＋ Parzelle</button>
    <div class="muted" style="margin-top:4px">„bis" leer lassen = aktuelle Parzelle.</div>
+
+   <div class="sec-head">🏅 Ämter (Verlauf)</div>
+   <datalist id="amt-list">${AEMTER.map(a=>`<option value="${esc(a)}">`).join('')}</datalist>
+   <div id="m-amt">${(Array.isArray(m.aemter)?m.aemter:[]).map(amtRowHtml).join('')}</div>
+   <button type="button" class="btn" onclick="GV.addAmt()">＋ Amt</button>
+   <div class="muted" style="margin-top:4px">„bis" leer lassen = aktuelles Amt.</div>
 
    <div class="sec-head">🏦 SEPA-Lastschrift</div>
    <label class="ck"><input type="checkbox" id="m-sepa" ${m.sepaAktiv?'checked':''}> SEPA-Lastschriftmandat erteilt</label>
@@ -277,7 +326,7 @@ function saveMemberForm(id){
   const ex=id?_cache.mitglieder[id]:null;
   const rec={ id:id||newId(), name, funktion:val('m-funktion'), eintrittsdatum:val('m-eintritt'),
     email, tel:val('m-tel'), adresse:val('m-adresse'), note:val('m-note'),
-    parzellen:readParz(),
+    parzellen:readParz(), aemter:readAemter(),
     sepaAktiv:!!($('m-sepa')&&$('m-sepa').checked),
     kontoinhaber:val('m-inhaber'), iban:val('m-iban'), bic:val('m-bic'),
     mandatsref:val('m-mref'), mandatsdatum:val('m-mdat'),
@@ -357,6 +406,8 @@ window.GV = {
   newMember, editMember, saveMemberForm, askDelMember, mailAlle, doAustritt,
   addParz:()=>$('m-parz').insertAdjacentHTML('beforeend', parzRowHtml({})),
   delParz:(btn)=>{ const r=btn.closest('.parz-row'); if(r) r.remove(); },
+  addAmt:()=>$('m-amt').insertAdjacentHTML('beforeend', amtRowHtml({})),
+  delAmt:(btn)=>{ const r=btn.closest('.amt-row'); if(r) r.remove(); },
   newListe, editListe, saveListeForm, askDelListe, listeAddMember, verteilerMail, verteilerCopy
 };
 
