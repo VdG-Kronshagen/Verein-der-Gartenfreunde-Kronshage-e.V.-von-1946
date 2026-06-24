@@ -124,7 +124,7 @@ function render(){
 // ── Mitglieder ─────────────────────────────────────────────────────
 function viewMitglieder(){
   let arr=members();
-  if(_q) arr=arr.filter(m=>[m.name,m.funktion,m.email,m.tel,m.adresse,m.note].map(x=>String(x||'').toLowerCase()).join(' ').includes(_q));
+  if(_q) arr=arr.filter(m=>[m.name,m.funktion,m.email,m.tel,m.adresse,m.note,(m.parzellen||[]).map(p=>p.nr).join(' ')].map(x=>String(x||'').toLowerCase()).join(' ').includes(_q));
   const anyMail=members().some(m=>m.email);
   const cards=arr.map(m=>`<div class="card">
       <h3>${esc(m.name||'(ohne Name)')}</h3>
@@ -135,6 +135,7 @@ function viewMitglieder(){
       </div>
       ${m.adresse?`<div class="sub" style="margin-top:6px">📍 ${esc(m.adresse)}</div>`:''}
       ${m.note?`<div class="sub" style="margin-top:6px">${esc(m.note)}</div>`:''}
+      ${(currentParz(m)||m.sepaAktiv)?`<div class="links" style="margin-top:8px">${currentParz(m)?`<span class="chip">🌳 Parzelle ${esc(currentParz(m))}</span>`:''}${m.sepaAktiv?`<span class="chip">🏦 SEPA</span>`:''}</div>`:''}
       <div class="actions">
         <button class="btn" onclick="GV.editMember('${m.id}')">Bearbeiten</button>
         <button class="x" title="Löschen" onclick="GV.askDelMember('${m.id}')">✕</button>
@@ -154,6 +155,22 @@ function mailAlle(){
   if(!emails.length){ toast('Keine E-Mail-Adressen hinterlegt.','err'); return; }
   openMail(emails,'bcc');
 }
+function parzRowHtml(p){ p=p||{};
+  return `<div class="parz-row">
+    <input class="pz-nr" placeholder="Parzelle Nr." value="${esc(p.nr||'')}" style="flex:1;min-width:70px">
+    <input class="pz-von" type="date" value="${esc(p.von||'')}" title="von" style="flex:1">
+    <input class="pz-bis" type="date" value="${esc(p.bis||'')}" title="bis (leer = aktuell)" style="flex:1">
+    <button type="button" class="x" title="Zeile entfernen" onclick="GV.delParz(this)">✕</button>
+  </div>`;
+}
+function readParz(){
+  return Array.from(document.querySelectorAll('.parz-row')).map(r=>({
+    nr:(r.querySelector('.pz-nr').value||'').trim(),
+    von:r.querySelector('.pz-von').value||'',
+    bis:r.querySelector('.pz-bis').value||''
+  })).filter(p=>p.nr).sort((a,b)=>String(a.von||'').localeCompare(String(b.von||'')));
+}
+function currentParz(m){ const ps=Array.isArray(m.parzellen)?m.parzellen:[]; const open=ps.filter(p=>!p.bis); if(open.length) return open[open.length-1].nr; return ps.length?ps[ps.length-1].nr:''; }
 function memberForm(m){
   const ls=lists();
   const myMail=String(m.email||'').toLowerCase().trim();
@@ -167,6 +184,24 @@ function memberForm(m){
    <div class="field"><label>E-Mail</label><input id="m-email" type="email" value="${esc(m.email||'')}"></div>
    <div class="field"><label>Telefon</label><input id="m-tel" value="${esc(m.tel||'')}"></div>
    <div class="field"><label>Adresse</label><input id="m-adresse" value="${esc(m.adresse||'')}"></div>
+
+   <div class="sec-head">🌳 Gartenparzellen (Verlauf)</div>
+   <div id="m-parz">${(Array.isArray(m.parzellen)?m.parzellen:[]).map(parzRowHtml).join('')}</div>
+   <button type="button" class="btn" onclick="GV.addParz()">＋ Parzelle</button>
+   <div class="muted" style="margin-top:4px">„bis" leer lassen = aktuelle Parzelle.</div>
+
+   <div class="sec-head">🏦 SEPA-Lastschrift</div>
+   <label class="ck"><input type="checkbox" id="m-sepa" ${m.sepaAktiv?'checked':''}> SEPA-Lastschriftmandat erteilt</label>
+   <div class="field"><label>Kontoinhaber <span style="font-weight:400;text-transform:none">(falls abweichend)</span></label><input id="m-inhaber" value="${esc(m.kontoinhaber||'')}"></div>
+   <div style="display:flex;gap:10px;flex-wrap:wrap">
+     <div class="field" style="flex:2;min-width:180px"><label>IBAN</label><input id="m-iban" value="${esc(m.iban||'')}" placeholder="DE.." autocomplete="off"></div>
+     <div class="field" style="flex:1;min-width:90px"><label>BIC</label><input id="m-bic" value="${esc(m.bic||'')}" autocomplete="off"></div>
+   </div>
+   <div style="display:flex;gap:10px;flex-wrap:wrap">
+     <div class="field" style="flex:1;min-width:150px"><label>Mandatsreferenz</label><input id="m-mref" value="${esc(m.mandatsref||'')}"></div>
+     <div class="field" style="flex:1;min-width:130px"><label>Mandat vom</label><input id="m-mdat" type="date" value="${esc(m.mandatsdatum||'')}"></div>
+   </div>
+
    <div class="field"><label>Notiz</label><textarea id="m-note" rows="2">${esc(m.note||'')}</textarea></div>
    ${vBlock}
    <div class="actions-row"><button class="btn" onclick="GV.close()">Abbrechen</button>
@@ -177,7 +212,11 @@ function editMember(id){ const m=_cache.mitglieder[id]; if(m) openModal(memberFo
 function saveMemberForm(id){
   const name=val('m-name'); if(!name){ toast('Bitte einen Namen eingeben.','err'); return; }
   const email=val('m-email');
-  const rec={ id:id||newId(), name, funktion:val('m-funktion'), email, tel:val('m-tel'), adresse:val('m-adresse'), note:val('m-note') };
+  const rec={ id:id||newId(), name, funktion:val('m-funktion'), email, tel:val('m-tel'), adresse:val('m-adresse'), note:val('m-note'),
+    parzellen:readParz(),
+    sepaAktiv:!!($('m-sepa')&&$('m-sepa').checked),
+    kontoinhaber:val('m-inhaber'), iban:val('m-iban'), bic:val('m-bic'),
+    mandatsref:val('m-mref'), mandatsdatum:val('m-mdat') };
   const ex=id?_cache.mitglieder[id]:null;
   if(ex){ rec.createdAt=ex.createdAt; } else { rec.createdAt=Date.now(); }
   // Verteiler-Mitgliedschaft (vor close lesen)
@@ -252,6 +291,8 @@ function verteilerCopy(id){ const v=_cache.verteiler[id]; if(v) copyText(normEma
 window.GV = {
   logout, show, onSearch, close:closeModal,
   newMember, editMember, saveMemberForm, askDelMember, mailAlle,
+  addParz:()=>$('m-parz').insertAdjacentHTML('beforeend', parzRowHtml({})),
+  delParz:(btn)=>{ const r=btn.closest('.parz-row'); if(r) r.remove(); },
   newListe, editListe, saveListeForm, askDelListe, listeAddMember, verteilerMail, verteilerCopy
 };
 
