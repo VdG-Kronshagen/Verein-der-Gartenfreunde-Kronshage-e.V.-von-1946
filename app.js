@@ -105,10 +105,12 @@ function startData(){
     });
   });
 }
-function saveMember(m){ m.updatedAt=Date.now(); m.updatedBy=whoLabel(); _ref.child('mitglieder').child(m.id).set(m).catch(e=>toast('Speichern fehlgeschlagen: '+(e&&e.message),'err')); }
-function delMember(id){ _ref.child('mitglieder').child(id).remove().catch(()=>{}); }
-function saveListe(v){ v.updatedAt=Date.now(); v.updatedBy=whoLabel(); _ref.child('verteiler').child(v.id).set(v).catch(e=>toast('Speichern fehlgeschlagen: '+(e&&e.message),'err')); }
-function delListe(id){ _ref.child('verteiler').child(id).remove().catch(()=>{}); }
+// Schreiben = sofort lokal übernehmen (optimistisch) + im Hintergrund speichern.
+// So erscheint die Änderung SOFORT, ohne aufs Echtzeit-Signal zu warten.
+function saveMember(m){ m.updatedAt=Date.now(); m.updatedBy=whoLabel(); if(!_cache.mitglieder) _cache.mitglieder={}; _cache.mitglieder[m.id]=m; if(_ref) _ref.child('mitglieder').child(m.id).set(m).catch(e=>toast('Speichern fehlgeschlagen: '+(e&&e.message),'err')); }
+function delMember(id){ if(_cache.mitglieder) delete _cache.mitglieder[id]; if(_ref) _ref.child('mitglieder').child(id).remove().catch(e=>toast('Löschen fehlgeschlagen: '+(e&&e.message),'err')); }
+function saveListe(v){ v.updatedAt=Date.now(); v.updatedBy=whoLabel(); if(!_cache.verteiler) _cache.verteiler={}; _cache.verteiler[v.id]=v; if(_ref) _ref.child('verteiler').child(v.id).set(v).catch(e=>toast('Speichern fehlgeschlagen: '+(e&&e.message),'err')); }
+function delListe(id){ if(_cache.verteiler) delete _cache.verteiler[id]; if(_ref) _ref.child('verteiler').child(id).remove().catch(e=>toast('Löschen fehlgeschlagen: '+(e&&e.message),'err')); }
 
 // ══════════════════════════════════════════════════════════════════
 //  Ansichten
@@ -231,9 +233,9 @@ function saveMemberForm(id){
       else if(!want.has(vid) && has){ saveListe(Object.assign({}, v, {emails:cur.filter(e=>e.toLowerCase()!==email.toLowerCase())})); }
     });
   }
-  closeModal(); toast('Mitglied gespeichert ✓','ok');
+  closeModal(); render(); toast('Mitglied gespeichert ✓','ok');
 }
-function askDelMember(id){ const m=_cache.mitglieder[id]; if(!m) return; if(!confirm(`Mitglied „${m.name||''}" löschen?`)) return; delMember(id); toast('Gelöscht.',''); }
+function askDelMember(id){ const m=_cache.mitglieder[id]; if(!m) return; if(!confirm(`Mitglied „${m.name||''}" löschen?`)) return; delMember(id); render(); toast('Gelöscht.',''); }
 
 // ── Verteiler ──────────────────────────────────────────────────────
 function viewVerteiler(){
@@ -281,9 +283,9 @@ function saveListeForm(id){
   const emails=normEmails([val('v-emails')]);
   const ex=id?_cache.verteiler[id]:null;
   saveListe({ id:id||newId(), name, emails, createdAt:(ex&&ex.createdAt)||Date.now() });
-  closeModal(); toast('Verteiler gespeichert ✓','ok');
+  closeModal(); render(); toast('Verteiler gespeichert ✓','ok');
 }
-function askDelListe(id){ const v=_cache.verteiler[id]; if(!v) return; if(!confirm(`Verteiler „${v.name||''}" löschen?`)) return; delListe(id); toast('Gelöscht.',''); }
+function askDelListe(id){ const v=_cache.verteiler[id]; if(!v) return; if(!confirm(`Verteiler „${v.name||''}" löschen?`)) return; delListe(id); render(); toast('Gelöscht.',''); }
 function verteilerMail(id){ const v=_cache.verteiler[id]; if(v) openMail(v.emails,'bcc'); }
 function verteilerCopy(id){ const v=_cache.verteiler[id]; if(v) copyText(normEmails(v.emails).join('; ')); }
 
