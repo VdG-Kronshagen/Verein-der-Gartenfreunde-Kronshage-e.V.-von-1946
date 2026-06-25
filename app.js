@@ -93,6 +93,68 @@ function doLogin(ev){
 function showLoginErr(m){ const el=$('login-err'); el.textContent=m; el.style.display='block'; }
 function logout(){ try{ firebase.auth().signOut(); }catch(e){} }
 
+// Passwort vergessen (Login): Reset-Mail an die eingegebene Adresse
+function forgotPw(){
+  const email=val('li-email');
+  if(!email || !/@/.test(email)){ showLoginErr('Bitte zuerst oben deine E-Mail eingeben – dann „Passwort vergessen".'); return; }
+  firebase.auth().sendPasswordResetEmail(email)
+    .then(()=>{ showLoginErr(''); toast('E-Mail zum Zurücksetzen verschickt ✓','ok'); })
+    .catch(err=>{ showLoginErr('Konnte keine Mail senden: '+(err&&err.message||'')); });
+}
+
+// Eigenes Passwort ändern – sicher: altes Passwort wird geprüft (Reauth)
+function changePwModal(){
+  openModal(`<h3>🔑 Mein Passwort ändern</h3>
+   <div class="field"><label>Aktuelles Passwort *</label><input id="p-cur" type="password" autocomplete="current-password"></div>
+   <div class="field"><label>Neues Passwort * <span style="font-weight:400;text-transform:none">(mind. 6 Zeichen)</span></label><input id="p-new" type="password" autocomplete="new-password"></div>
+   <div class="field"><label>Neues Passwort wiederholen *</label><input id="p-new2" type="password" autocomplete="new-password"></div>
+   <div class="actions-row"><button class="btn" onclick="GV.close()">Abbrechen</button><button class="btn primary" onclick="GV.savePw()">Ändern</button></div>`);
+}
+function savePw(){
+  const cur=val('p-cur'), n1=val('p-new'), n2=val('p-new2');
+  if(n1.length<6){ toast('Neues Passwort: mindestens 6 Zeichen.','err'); return; }
+  if(n1!==n2){ toast('Die neuen Passwörter stimmen nicht überein.','err'); return; }
+  const user=firebase.auth().currentUser; if(!user){ toast('Nicht angemeldet.','err'); return; }
+  const cred=firebase.auth.EmailAuthProvider.credential(user.email, cur);
+  user.reauthenticateWithCredential(cred).then(()=>user.updatePassword(n1))
+    .then(()=>{ closeModal(); toast('Passwort geändert ✓','ok'); })
+    .catch(err=>{ const c=err&&err.code; toast((c==='auth/wrong-password'||c==='auth/invalid-credential')?'Aktuelles Passwort ist falsch.':'Fehler: '+(err&&err.message||''),'err'); });
+}
+
+// Neuen Login anlegen (über zweite App-Instanz, damit die eigene Sitzung bleibt)
+function provisionUser(email, pw){
+  return new Promise((resolve,reject)=>{
+    try{
+      const cfg=firebase.app().options;
+      const sec=(firebase.apps||[]).find(a=>a.name==='admin-prov') || firebase.initializeApp(cfg,'admin-prov');
+      sec.auth().createUserWithEmailAndPassword(email, pw)
+        .then(()=>{ try{ sec.auth().signOut(); }catch(_){}; resolve(); })
+        .catch(err=>{ try{ sec.auth().signOut(); }catch(_){}; reject(err); });
+    }catch(e){ reject(e); }
+  });
+}
+function addUserModal(){
+  openModal(`<h3>👤 Nutzer anlegen</h3>
+   <div class="muted" style="margin-bottom:12px">Legt einen neuen Login an. Tipp: Häkchen unten setzen → die Person bekommt eine Mail und vergibt ihr Passwort selbst (du musst es dann nicht kennen).</div>
+   <div class="field"><label>E-Mail *</label><input id="u-email" type="email" autocomplete="off"></div>
+   <div class="field"><label>Start-Passwort * <span style="font-weight:400;text-transform:none">(mind. 6 Zeichen)</span></label><input id="u-pw" type="text" autocomplete="off" placeholder="z. B. Start1234"></div>
+   <label class="ck"><input type="checkbox" id="u-reset" checked> Mail zum eigenen Passwort-Setzen an die Person senden</label>
+   <div class="actions-row"><button class="btn" onclick="GV.close()">Abbrechen</button><button class="btn primary" onclick="GV.saveUser()">Anlegen</button></div>`);
+}
+function saveUser(){
+  const email=val('u-email'), pw=val('u-pw');
+  if(!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ toast('Bitte eine gültige E-Mail eingeben.','err'); return; }
+  if(pw.length<6){ toast('Start-Passwort: mindestens 6 Zeichen.','err'); return; }
+  const reset=!!($('u-reset')&&$('u-reset').checked);
+  toast('Lege Nutzer an …','');
+  provisionUser(email, pw).then(()=>{
+    if(reset) firebase.auth().sendPasswordResetEmail(email).catch(()=>{});
+    closeModal(); toast('Nutzer angelegt ✓'+(reset?' – Mail zum Passwort-Setzen verschickt.':''),'ok');
+  }).catch(err=>{ const c=err&&err.code;
+    toast(c==='auth/email-already-in-use'?'Diese E-Mail hat schon einen Zugang.':(c==='auth/weak-password'?'Passwort zu schwach.':(c==='auth/invalid-email'?'Ungültige E-Mail.':'Fehler: '+(err&&err.message||''))),'err');
+  });
+}
+
 // ── Datenschicht (realtime, granulare Writes) ──────────────────────
 function startData(){
   if(_ref) return;  // nur einmal
@@ -414,6 +476,7 @@ function verteilerCopy(id){ const v=_cache.verteiler[id]; if(v) copyText(normEma
 // ── Export für inline onclick ──────────────────────────────────────
 window.GV = {
   logout, show, onSearch, close:closeModal,
+  forgotPw, changePw:changePwModal, savePw, addUser:addUserModal, saveUser,
   newMember, editMember, saveMemberForm, askDelMember, mailAlle, doArchive,
   copySepa, copySepaForm, amtPrev,
   addParz:()=>$('m-parz').insertAdjacentHTML('beforeend', parzRowHtml({})),

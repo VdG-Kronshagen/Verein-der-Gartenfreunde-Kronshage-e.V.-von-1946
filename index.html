@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>VdG Kronshagen – Mitglieder & Verteiler</title>
-  <link rel="stylesheet" href="styles.css?v=9">
+  <link rel="stylesheet" href="styles.css?v=10">
   <!-- PWA / installierbar auf Android & iOS -->
   <link rel="manifest" href="manifest.webmanifest">
   <meta name="theme-color" content="#2f9e3f">
@@ -29,6 +29,7 @@
       <input id="li-pw" type="password" autocomplete="current-password" required>
       <div class="login-err" id="login-err"></div>
       <button class="btn primary" type="submit" style="width:100%;margin-top:18px;padding:11px">Anmelden</button>
+      <div style="text-align:center;margin-top:12px"><a href="#" onclick="GV.forgotPw();return false" style="font-size:13px;color:var(--primary-l)">Passwort vergessen?</a></div>
     </form>
   </div>
 
@@ -38,7 +39,9 @@
       <img src="logo.jpg?v=1" class="tb-logo" alt="" onerror="this.style.display='none'">
       <span class="brand" id="brand">Gartenverein</span>
       <span class="who" id="who"></span>
-      <button class="btn" style="background:rgba(255,255,255,.14);border:none;color:#fff" onclick="GV.logout()">Abmelden</button>
+      <button class="btn tb-act" title="Mein Passwort ändern" onclick="GV.changePw()">🔑 Passwort</button>
+      <button class="btn tb-act" title="Neuen Login anlegen" onclick="GV.addUser()">👤 Nutzer</button>
+      <button class="btn tb-act" onclick="GV.logout()">Abmelden</button>
     </div>
     <div class="bar">
       <button class="tab" id="tab-mitglieder" onclick="GV.show('mitglieder')">👥 Mitglieder</button>
@@ -58,7 +61,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 
   <script src="firebase-config.js?v=1"></script>
-  <script src="app.js?v=9"></script>
+  <script src="app.js?v=10"></script>
   <script>if('serviceWorker' in navigator){ window.addEventListener('load', function(){ navigator.serviceWorker.register('sw.js').catch(function(){}); }); }</script>
 </body>
 </html>
