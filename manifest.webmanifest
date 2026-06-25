@@ -1,0 +1,16 @@
+{
+  "name": "VdG Kronshagen – Mitglieder & Verteiler",
+  "short_name": "VdG Kronshagen",
+  "description": "Mitgliederverwaltung & E-Mail-Verteiler des Vereins der Gartenfreunde Kronshagen.",
+  "lang": "de",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#2f9e3f",
+  "icons": [
+    { "src": "logo.jpg", "sizes": "192x192", "type": "image/jpeg", "purpose": "any" },
+    { "src": "logo.jpg", "sizes": "512x512", "type": "image/jpeg", "purpose": "any" }
+  ]
+}

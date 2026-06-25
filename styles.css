@@ -14,8 +14,8 @@ a{color:var(--primary-l)}
 
 /* ── Login ── */
 #login{display:none;min-height:100vh;align-items:center;justify-content:center;background:linear-gradient(135deg,#2f9e3f 0%,#1e7a2c 100%)}
-.login-logo{display:block;width:96px;height:96px;margin:0 auto 14px;object-fit:contain}
-.tb-logo{height:36px;width:36px;border-radius:50%;background:#fff;padding:2px;object-fit:contain;flex:none}
+.login-logo{display:block;width:150px;height:150px;margin:4px auto 16px;object-fit:contain}
+.tb-logo{height:46px;width:46px;border-radius:50%;background:#fff;padding:3px;object-fit:contain;flex:none}
 #login.show{display:flex}
 .login-box{background:#fff;border-radius:16px;padding:30px 28px;width:92%;max-width:380px;box-shadow:0 24px 60px rgba(20,30,55,.4)}
 .login-box h1{font-size:20px;color:var(--primary);margin:0 0 4px}
