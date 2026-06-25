@@ -120,10 +120,8 @@ function show(v){ _view=v; _q=''; const s=$('search'); if(s) s.value=''; render(
 function onSearch(v){ _q=String(v||'').toLowerCase().trim(); render(); }
 function render(){
   $('tab-mitglieder').classList.toggle('active', _view==='mitglieder');
-  if($('tab-parzellen')) $('tab-parzellen').classList.toggle('active', _view==='parzellen');
-  if($('tab-aemter')) $('tab-aemter').classList.toggle('active', _view==='aemter');
   $('tab-verteiler').classList.toggle('active', _view==='verteiler');
-  $('view').innerHTML = _view==='verteiler' ? viewVerteiler() : _view==='parzellen' ? viewParzellen() : _view==='aemter' ? viewAemter() : viewMitglieder();
+  $('view').innerHTML = _view==='verteiler' ? viewVerteiler() : viewMitglieder();
 }
 
 // ── Mitglieder ─────────────────────────────────────────────────────
@@ -169,65 +167,30 @@ function viewMitglieder(){
       </span></h2>
     <div class="list">${cards}</div>
     ${left.length?`<details style="margin-top:14px"><summary style="cursor:pointer;color:var(--muted);font-size:13px;font-weight:600">🗂️ Ehemalige Mitglieder – ausgetreten/verstorben (${left.length})</summary><div class="list" style="margin-top:10px">${left.map(leftCard).join('')}</div></details>`:''}
-  </div>`;
+  </div>
+  ${freieGaertenHtml()}`;
 }
 function mailAlle(){
   const emails=members().filter(isAktiv).map(m=>m.email).filter(Boolean);
   if(!emails.length){ toast('Keine E-Mail-Adressen hinterlegt.','err'); return; }
   openMail(emails,'bcc');
 }
-// ── Freie Gärten (Parzellen ohne aktuellen Inhaber) ────────────────
-function parseParzList(s){
-  const out=new Set();
-  String(s||'').split(/[,;\s]+/).forEach(tok=>{ tok=tok.trim(); if(!tok) return;
-    const mm=tok.match(/^(\d+)\s*-\s*(\d+)$/);
-    if(mm){ let a=+mm[1], b=+mm[2]; if(a>b){const t=a;a=b;b=t;} for(let i=a;i<=b;i++) out.add(String(i)); }
-    else out.add(tok);
-  });
-  return out;
-}
+// ── Freie Gärten: Parzellen, die (durch Austritt/Tod) frei geworden sind ──
 function occupiedParz(){ const s={}; members().forEach(m=>{ if(isFormer(m)) return; (m.parzellen||[]).forEach(p=>{ if(p.nr && !p.bis) s[String(p.nr)]=m.name; }); }); return s; }
 function lastHolder(nr){ let best=null; members().forEach(m=>(m.parzellen||[]).forEach(p=>{ if(String(p.nr)!==String(nr)) return; const key=String(p.bis||p.von||''); if(!best || key>best.key) best={name:m.name, bis:p.bis||'', key}; })); return best; }
-function viewParzellen(){
+function freieGaertenHtml(){
   const occ=occupiedParz();
-  const master=parseParzList(_cache.meta&&_cache.meta.parzellen);
-  let universe;
-  if(master.size){ universe=master; }
-  else { universe=new Set(); members().forEach(m=>(m.parzellen||[]).forEach(p=>{ if(p.nr) universe.add(String(p.nr)); })); }
+  const universe=new Set(); members().forEach(m=>(m.parzellen||[]).forEach(p=>{ if(p.nr) universe.add(String(p.nr)); }));
   let free=[...universe].filter(nr=>!occ[nr]);
-  if(_q) free=free.filter(nr=>String(nr).toLowerCase().includes(_q));
   free.sort((a,b)=>{ const na=parseInt(a,10), nb=parseInt(b,10); if(!isNaN(na)&&!isNaN(nb)&&na!==nb) return na-nb; return String(a).localeCompare(String(b),'de',{numeric:true}); });
-  const cards=free.map(nr=>{ const h=lastHolder(nr);
-    return `<div class="card"><h3>🌳 Parzelle ${esc(nr)} <span class="chip" style="background:#fff4e5;border-color:#ffd9a0;color:#b56a00">frei</span></h3>${h?`<div class="sub">zuletzt: ${esc(h.name)}${h.bis?' (bis '+fmtDateShort(h.bis)+')':''}</div>`:`<div class="sub muted">noch nie vergeben</div>`}</div>`;
-  }).join('') || `<div class="muted">Aktuell sind alle erfassten Gärten belegt. 🌳</div>`;
-  return `<div class="sec">
-    <h2><span>🌳 Freie Gärten (${free.length})</span><button class="btn" onclick="GV.setParzList()">⚙ Garten-Nummern festlegen</button></h2>
-    <div class="muted" style="margin-bottom:10px">Parzellen ohne aktuellen Inhaber.${master.size?'':' Tipp: Lege oben die Gesamt-Nummern fest (z. B. „1-60"), dann erscheinen auch nie vergebene Gärten.'} Den vollständigen Verlauf je Mitglied siehst du in der Mitglieds-Karte.</div>
-    <div class="list">${cards}</div>
-  </div>`;
-}
-function setParzList(){ const cur=(_cache.meta&&_cache.meta.parzellen)||''; const v=prompt('Alle Garten-Nummern (z. B. „1-60" oder „1,2,5-9"):', cur); if(v===null) return; saveMeta({parzellen:String(v).trim()}); render(); toast('Garten-Nummern gespeichert ✓','ok'); }
-// ── Ämter-Verlauf (aus allen Mitgliedern, inkl. ausgetretener) ──────
-function viewAemter(){
-  const map={};
-  members().forEach(m=>{ (m.aemter||[]).forEach(a=>{ if(!a.amt) return; (map[a.amt]=map[a.amt]||[]).push({name:m.name||'?', von:a.von||'', bis:a.bis||''}); }); });
-  let keys=Object.keys(map);
-  if(_q) keys=keys.filter(k=>String(k).toLowerCase().includes(_q) || map[k].some(h=>String(h.name).toLowerCase().includes(_q)));
-  keys.sort((a,b)=>String(a).localeCompare(String(b),'de',{sensitivity:'base'}));
-  const cards=keys.map(amt=>{
-    const hist=map[amt].slice().sort((a,b)=>String(a.von||'').localeCompare(String(b.von||'')));
-    const cur=hist.filter(h=>!h.bis).map(h=>h.name);
-    const rows=hist.map(h=>`<div class="parz-hist${!h.bis?' cur':''}"><span class="nm">${esc(h.name)}</span><span class="rg">${fmtDateShort(h.von)||'?'} – ${h.bis?fmtDateShort(h.bis):'heute'}</span></div>`).join('');
-    return `<div class="card">
-      <h3>🏅 ${esc(amt)}</h3>
-      <div class="sub">${cur.length?('Aktuell: '+esc(cur.join(', '))):'aktuell nicht besetzt'}</div>
-      <div style="margin-top:8px">${rows}</div>
-    </div>`;
-  }).join('') || `<div class="muted">${_q?'Keine Treffer.':'Noch keine Ämter erfasst – trag sie bei den Mitgliedern ein.'}</div>`;
-  return `<div class="sec">
-    <h2><span>🏅 Ämter-Verlauf</span></h2>
-    <div class="muted" style="margin-bottom:10px">Wer hatte wann welches Amt? Automatisch aus den Ämter-Einträgen der Mitglieder gebildet (inkl. ausgetretener).</div>
-    <div class="list">${cards}</div>
+  if(!free.length) return '';
+  const items=free.map(nr=>{ const h=lastHolder(nr);
+    return `<span class="chip" style="background:#fff4e5;border-color:#ffd9a0;color:#b56a00">🌳 ${esc(nr)}${h&&h.name?` – zuletzt ${esc(h.name)}`:''}${h&&h.bis?' (bis '+fmtDateShort(h.bis)+')':''}</span>`;
+  }).join('');
+  return `<div class="sec" style="margin-top:16px">
+    <h2><span>🌳 Freie Gärten (${free.length})</span></h2>
+    <div class="muted" style="margin-bottom:8px">Parzellen, die durch Austritt oder Tod frei geworden sind und aktuell niemandem zugeordnet sind.</div>
+    <div class="links">${items}</div>
   </div>`;
 }
 function parzRowHtml(p){ p=p||{};
@@ -453,7 +416,7 @@ function verteilerCopy(id){ const v=_cache.verteiler[id]; if(v) copyText(normEma
 window.GV = {
   logout, show, onSearch, close:closeModal,
   newMember, editMember, saveMemberForm, askDelMember, mailAlle, doArchive,
-  copySepa, copySepaForm, amtPrev, setParzList,
+  copySepa, copySepaForm, amtPrev,
   addParz:()=>$('m-parz').insertAdjacentHTML('beforeend', parzRowHtml({})),
   delParz:(btn)=>{ const r=btn.closest('.parz-row'); if(r) r.remove(); },
   addAmt:()=>$('m-amt').insertAdjacentHTML('beforeend', amtRowHtml({})),
