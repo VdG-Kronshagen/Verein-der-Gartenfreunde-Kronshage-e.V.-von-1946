@@ -11,7 +11,7 @@ const $ = id => document.getElementById(id);
 const esc = s => String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 const val = id => { const el=$(id); return el ? el.value.trim() : ''; };
 function toast(msg,type){ const e=document.createElement('div'); e.className='toast'+(type?(' '+type):''); e.textContent=msg; $('toasts').appendChild(e); setTimeout(()=>e.remove(),3200); }
-function openModal(html){ $('modal-body').innerHTML=html; $('modal-bg').classList.add('show'); }
+function openModal(html, wide){ const m=$('modal-body'); m.innerHTML=html; m.classList.toggle('modal-wide', !!wide); $('modal-bg').classList.add('show'); }
 function closeModal(){ $('modal-bg').classList.remove('show'); }
 const telHref  = t => 'tel:'+String(t||'').replace(/[^\d+]/g,'');
 const mailHref = m => 'mailto:'+esc(String(m||'').trim());
@@ -188,36 +188,33 @@ function render(){
 
 // ── Mitglieder ─────────────────────────────────────────────────────
 function matchM(m){ return [m.name,m.email,m.tel,m.adresse,m.note,(m.parzellen||[]).map(p=>p.nr).join(' '),(m.aemter||[]).map(a=>a.amt).join(' ')].map(x=>String(x||'').toLowerCase()).join(' ').includes(_q); }
-function memberCard(m){ return `<div class="card">
+function memberCard(m){ const amt=currentAmt(m), pz=currentParz(m);
+  return `<div class="card" style="cursor:pointer" onclick="GV.openMember('${m.id}')">
       <h3>${esc(m.name||'(ohne Name)')}</h3>
-      <div class="links">
-        ${m.email?`<a href="${mailHref(m.email)}">✉️ ${esc(m.email)}</a>`:''}
-        ${m.tel?`<a href="${telHref(m.tel)}">📞 ${esc(m.tel)}</a>`:''}
-      </div>
-      ${m.adresse?`<div class="sub" style="margin-top:6px">📍 ${esc(m.adresse)}</div>`:''}
-      ${m.note?`<div class="sub" style="margin-top:6px">${esc(m.note)}</div>`:''}
-      ${(m.parzellen&&m.parzellen.length)?`<div class="links" style="margin-top:8px">${m.parzellen.map(p=>`<span class="chip${!p.bis?' cur':''}">🌳 ${esc(p.nr)} ${parzRange(p)}</span>`).join('')}</div>`:''}
-      ${(m.aemter&&m.aemter.length)?`<div class="links" style="margin-top:6px">${m.aemter.map(a=>`<span class="chip${!a.bis?' cur':''}">🏅 ${esc(a.amt)} ${parzRange(a)}</span>`).join('')}</div>`:''}
-      ${m.sepaAktiv?`<div class="links" style="margin-top:6px"><span class="chip">🏦 SEPA</span></div>`:''}
-      <div class="actions">
-        <button class="btn" onclick="GV.editMember('${m.id}')">Bearbeiten</button>
-        ${m.iban?`<button class="btn" title="Bankdaten kopieren" onclick="GV.copySepa('${m.id}')">⧉ Bank</button>`:''}
-        <button class="x" title="Löschen" onclick="GV.askDelMember('${m.id}')">✕</button>
+      <div class="links" style="margin-top:6px">
+        ${amt?`<span class="chip cur">🏅 ${esc(amt)}</span>`:''}
+        ${pz?`<span class="chip">🌳 Parzelle ${esc(pz)}</span>`:''}
+        ${m.sepaAktiv?`<span class="chip">🏦 SEPA</span>`:''}
+        ${(!amt&&!pz&&!m.sepaAktiv)?'<span class="muted" style="font-size:13px">Details ansehen →</span>':''}
       </div>
     </div>`; }
-function leftCard(m){ return `<div class="card">
+function leftCard(m){ return `<div class="card" style="cursor:pointer" onclick="GV.openMember('${m.id}')">
       <h3>${esc(m.name||'(ohne Name)')}</h3>
       <div class="sub">${statusLabel(m)}</div>
       ${(m.parzellen&&m.parzellen.length)?`<div class="links" style="margin-top:8px">${m.parzellen.map(p=>`<span class="chip">🌳 ${esc(p.nr)} ${parzRange(p)}</span>`).join('')}</div>`:''}
-      ${(m.aemter&&m.aemter.length)?`<div class="links" style="margin-top:6px">${m.aemter.map(a=>`<span class="chip">🏅 ${esc(a.amt)} ${parzRange(a)}</span>`).join('')}</div>`:''}
-      <div class="actions">
-        <button class="btn" onclick="GV.editMember('${m.id}')">Ansehen</button>
-        <button class="x" title="Endgültig löschen (auch Name)" onclick="GV.askDelMember('${m.id}')">✕</button>
-      </div>
     </div>`; }
 function viewMitglieder(){
   let arr=members(); if(_q) arr=arr.filter(matchM);
   const active=arr.filter(isAktiv), left=arr.filter(m=>!isAktiv(m));
+  // Übersicht: Amtsinhaber oben, der Rest nach niedrigster Parzellennummer
+  active.sort((a,b)=>{
+    const aA=currentAmt(a)?1:0, bA=currentAmt(b)?1:0;
+    if(aA!==bA) return bA-aA;
+    if(aA&&bA) return String(a.name||'').localeCompare(String(b.name||''),'de',{sensitivity:'base'});
+    const pa=minParz(a), pb=minParz(b);
+    if(pa!==pb) return pa-pb;
+    return String(a.name||'').localeCompare(String(b.name||''),'de',{sensitivity:'base'});
+  });
   const anyMail=members().filter(isAktiv).some(m=>m.email);
   const cards=active.map(memberCard).join('') || `<div class="muted">${_q?'Keine aktiven Treffer.':'Noch keine Mitglieder. Lege das erste an.'}</div>`;
   return `<div class="sec">
@@ -270,6 +267,18 @@ function readParz(eintritt){
   }).filter(Boolean).sort((a,b)=>String(a.von||'').localeCompare(String(b.von||'')));
 }
 const AEMTER=['1. Vorsitzende/r','2. Vorsitzende/r','Kassenwart/in','Schriftführer/in','Beisitzer/in','Gerätewart/in','Wertermittler/in','Vorstand'];
+// Verwaltbare Ämter-Liste (in meta gespeichert, sonst Standard)
+function aemterListe(){ const s=(_cache.meta&&_cache.meta.aemterListe)||''; const arr=String(s).split(/[\n,;]+/).map(x=>x.trim()).filter(Boolean); return arr.length?arr:AEMTER; }
+function manageAemter(){
+  const cur=aemterListe().join('\n');
+  const v=prompt('Ämter verwalten (ein Amt pro Zeile):', cur);
+  if(v===null) return;
+  saveMeta({aemterListe:String(v).trim()});
+  const dl=$('amt-list'); if(dl) dl.innerHTML=aemterListe().map(a=>`<option value="${esc(a)}">`).join('');
+  toast('Ämter-Liste gespeichert ✓','ok');
+}
+// Niedrigste AKTUELLE Parzellennummer (für Sortierung); ohne Parzelle = ganz unten
+function minParz(m){ let min=Infinity; (m.parzellen||[]).forEach(p=>{ if(p.bis) return; const n=parseInt(p.nr,10); if(!isNaN(n)&&n<min) min=n; }); return min; }
 function amtRowHtml(a){ a=a||{};
   return `<div class="amt-item">
     <div class="amt-row">
@@ -365,8 +374,8 @@ function memberForm(m){
    <button type="button" class="btn" onclick="GV.addParz()">＋ Parzelle</button>
    <div class="muted" style="margin-top:4px">Datum wird automatisch gesetzt: „von" = Eintrittsdatum, „bis" beim Austritt/Tod.</div>
 
-   <div class="sec-head">🏅 Ämter (Verlauf)</div>
-   <datalist id="amt-list">${AEMTER.map(a=>`<option value="${esc(a)}">`).join('')}</datalist>
+   <div class="sec-head" style="display:flex;justify-content:space-between;align-items:center">🏅 Ämter (Verlauf) <button type="button" class="btn" style="padding:4px 10px;font-size:12px" onclick="GV.manageAemter()">⚙ Ämter verwalten</button></div>
+   <datalist id="amt-list">${aemterListe().map(a=>`<option value="${esc(a)}">`).join('')}</datalist>
    <div id="m-amt">${(Array.isArray(m.aemter)?m.aemter:[]).map(amtRowHtml).join('')}</div>
    <button type="button" class="btn" onclick="GV.addAmt()">＋ Amt</button>
    <div class="muted" style="margin-top:4px">„bis" leer lassen = aktuelles Amt.</div>
@@ -386,12 +395,35 @@ function memberForm(m){
    <div class="field"><label>Notiz</label><textarea id="m-note" rows="2">${esc(m.note||'')}</textarea></div>
    ${vBlock}
    <div class="actions-row">
-   ${(m.id && !isFormer(m))?`<button class="btn danger" style="margin-right:auto" onclick="GV.doArchive('${m.id}','ausgetreten')">🚪 Austritt</button><button class="btn danger" onclick="GV.doArchive('${m.id}','verstorben')">🕯️ Verstorben</button>`:''}
+   ${m.id?`<button class="btn danger" style="margin-right:auto" onclick="GV.askDelMember('${m.id}')">🗑 Löschen</button>`:''}
+   ${(m.id && !isFormer(m))?`<button class="btn danger" onclick="GV.doArchive('${m.id}','ausgetreten')">🚪 Austritt</button><button class="btn danger" onclick="GV.doArchive('${m.id}','verstorben')">🕯️ Verstorben</button>`:''}
    <button class="btn" onclick="GV.close()">Abbrechen</button>
    <button class="btn primary" onclick="GV.saveMemberForm('${m.id||''}')">${m.id?'Speichern':'Anlegen'}</button></div>`;
 }
-function newMember(){ openModal(memberForm({})); }
-function editMember(id){ const m=_cache.mitglieder[id]; if(m) openModal(memberForm(m)); }
+function newMember(){ openModal(memberForm({}), true); }
+function editMember(id){ const m=_cache.mitglieder[id]; if(m) openModal(memberForm(m), true); }
+// Klick auf ein Mitglied → alle Infos (read-only), unten „Bearbeiten"
+function openMember(id){ const m=_cache.mitglieder[id]; if(m) openModal(memberDetailHtml(m), true); }
+function memberDetailHtml(m){
+  const det=(label,inner)=>inner?`<div class="dt"><div class="dt-l">${label}</div><div class="dt-v">${inner}</div></div>`:'';
+  const parz=(m.parzellen||[]).length?(m.parzellen||[]).map(p=>`<span class="chip${!p.bis?' cur':''}">🌳 ${esc(p.nr)} ${parzRange(p)}</span>`).join(' '):'';
+  const aem=(m.aemter||[]).length?(m.aemter||[]).map(a=>`<span class="chip${!a.bis?' cur':''}">🏅 ${esc(a.amt)} ${parzRange(a)}</span>`).join(' '):'';
+  const sepa = (m.sepaAktiv||m.iban) ? `${esc(m.kontoinhaber||m.name||'')}${m.iban?'<br>IBAN: '+esc(m.iban):''}${m.bic?'<br>BIC: '+esc(m.bic):''}${m.mandatsref?'<br>Mandat: '+esc(m.mandatsref)+(m.mandatsdatum?' vom '+fmtDateShort(m.mandatsdatum):''):''}${m.iban?`<br><button class="btn" style="margin-top:8px" onclick="GV.copySepa('${m.id}')">⧉ Bankdaten kopieren</button>`:''}` : '';
+  return `<h3 style="margin-bottom:4px">${esc(m.name||'(ohne Name)')}</h3>
+   ${isFormer(m)?`<div style="background:#fdecea;border:1px solid #f0bcb6;border-radius:8px;padding:6px 10px;margin-bottom:12px;color:#c0392b;font-size:13px">${statusLabel(m)}</div>`:'<div style="margin-bottom:14px"></div>'}
+   ${det('Eintrittsdatum', m.eintrittsdatum?fmtDateShort(m.eintrittsdatum):'')}
+   ${det('E-Mail', m.email?`<a href="${mailHref(m.email)}">${esc(m.email)}</a>`:'')}
+   ${det('Telefon', m.tel?`<a href="${telHref(m.tel)}">${esc(m.tel)}</a>`:'')}
+   ${det('Adresse', m.adresse?esc(m.adresse):'')}
+   ${det('Notiz', m.note?esc(m.note):'')}
+   ${det('🌳 Gartenparzellen (Verlauf)', parz)}
+   ${det('🏅 Ämter (Verlauf)', aem)}
+   ${det('🏦 SEPA-Lastschrift', sepa)}
+   <div class="actions-row" style="margin-top:18px">
+     <button class="btn" onclick="GV.close()">Schließen</button>
+     <button class="btn primary" onclick="GV.editMember('${m.id}')">✎ Bearbeiten</button>
+   </div>`;
+}
 function saveMemberForm(id){
   const name=val('m-name'); if(!name){ toast('Bitte einen Namen eingeben.','err'); return; }
   const email=val('m-email');
@@ -419,7 +451,7 @@ function saveMemberForm(id){
   }
   closeModal(); render(); toast('Mitglied gespeichert ✓','ok');
 }
-function askDelMember(id){ const m=_cache.mitglieder[id]; if(!m) return; if(!confirm(`Mitglied „${m.name||''}" löschen?`)) return; delMember(id); render(); toast('Gelöscht.',''); }
+function askDelMember(id){ const m=_cache.mitglieder[id]; if(!m) return; if(!confirm(`Mitglied „${m.name||''}" endgültig löschen?`)) return; delMember(id); closeModal(); render(); toast('Gelöscht.',''); }
 
 // ── Verteiler ──────────────────────────────────────────────────────
 function viewVerteiler(){
@@ -477,8 +509,8 @@ function verteilerCopy(id){ const v=_cache.verteiler[id]; if(v) copyText(normEma
 window.GV = {
   logout, show, onSearch, close:closeModal,
   forgotPw, changePw:changePwModal, savePw, addUser:addUserModal, saveUser,
-  newMember, editMember, saveMemberForm, askDelMember, mailAlle, doArchive,
-  copySepa, copySepaForm, amtPrev,
+  newMember, editMember, openMember, saveMemberForm, askDelMember, mailAlle, doArchive,
+  copySepa, copySepaForm, amtPrev, manageAemter,
   addParz:()=>$('m-parz').insertAdjacentHTML('beforeend', parzRowHtml({})),
   delParz:(btn)=>{ const r=btn.closest('.parz-row'); if(r) r.remove(); },
   addAmt:()=>$('m-amt').insertAdjacentHTML('beforeend', amtRowHtml({})),
