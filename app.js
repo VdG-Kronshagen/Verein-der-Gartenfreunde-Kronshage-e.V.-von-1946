@@ -191,12 +191,15 @@ function matchM(m){ return [m.name,m.email,m.tel,m.adresse,m.note,(m.parzellen||
 function memberCard(m){ const amt=currentAmt(m), pz=currentParz(m);
   return `<div class="card" style="cursor:pointer" onclick="GV.openMember('${m.id}')">
       <h3>${esc(m.name||'(ohne Name)')}</h3>
-      <div class="links" style="margin-top:6px">
+      ${(m.email||m.tel)?`<div class="links" style="margin-top:6px" onclick="event.stopPropagation()">
+        ${m.email?`<a href="${mailHref(m.email)}">✉️ ${esc(m.email)}</a>`:''}
+        ${m.tel?`<a href="${telHref(m.tel)}">📞 ${esc(m.tel)}</a>`:''}
+      </div>`:''}
+      ${(amt||pz||m.sepaAktiv)?`<div class="links" style="margin-top:6px">
         ${amt?`<span class="chip cur">🏅 ${esc(amt)}</span>`:''}
         ${pz?`<span class="chip">🌳 Parzelle ${esc(pz)}</span>`:''}
         ${m.sepaAktiv?`<span class="chip">🏦 SEPA</span>`:''}
-        ${(!amt&&!pz&&!m.sepaAktiv)?'<span class="muted" style="font-size:13px">Details ansehen →</span>':''}
-      </div>
+      </div>`:''}
     </div>`; }
 function leftCard(m){ return `<div class="card" style="cursor:pointer" onclick="GV.openMember('${m.id}')">
       <h3>${esc(m.name||'(ohne Name)')}</h3>
@@ -220,6 +223,7 @@ function viewMitglieder(){
   return `<div class="sec">
     <h2><span>👥 Mitglieder (${members().filter(isAktiv).length})</span>
       <span style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn" title="Ämter-Bezeichnungen bearbeiten" onclick="GV.manageAemter()">⚙ Ämter</button>
         ${anyMail?`<button class="btn" title="Mail an alle aktiven (BCC)" onclick="GV.mailAlle()">✉️ Mail an alle</button>`:''}
         <button class="btn primary" onclick="GV.newMember()">＋ Mitglied</button>
       </span></h2>
