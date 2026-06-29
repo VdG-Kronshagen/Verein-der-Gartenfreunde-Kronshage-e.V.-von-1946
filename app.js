@@ -841,10 +841,13 @@ function viewBeitraege(){
   // — SEPA-Export —
   const sepaSec=`<div class="sec" style="margin-top:16px">
     <h2><span>🏦 SEPA-Lastschrift-Export</span>
-      <button class="btn primary" ${(!cfgOk||!sepaMembers.length)?'disabled style="opacity:.5;cursor:not-allowed"':''} onclick="GV.exportSepa()">⬇️ SEPA-XML erzeugen (pain.008)</button>
+      <span style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn" ${(!sepaMembers.length)?'disabled style="opacity:.5;cursor:not-allowed"':''} onclick="GV.exportLastschriftenXlsx()">📊 Übersicht als Excel</button>
+        <button class="btn primary" ${(!cfgOk||!sepaMembers.length)?'disabled style="opacity:.5;cursor:not-allowed"':''} onclick="GV.exportSepa()">⬇️ SEPA-XML (für Bank)</button>
+      </span>
     </h2>
     ${!cfgOk?`<div class="muted" style="color:#c0392b">Bitte zuerst Gläubiger-ID, Vereinsname und Vereins-IBAN in den Einstellungen ausfüllen.</div>`:''}
-    <div class="muted" style="margin-bottom:8px">Exportiert werden alle aktiven Mitglieder mit erteiltem Lastschriftmandat und hinterlegter IBAN.</div>
+    <div class="muted" style="margin-bottom:8px">Exportiert werden alle aktiven Mitglieder mit erteiltem Lastschriftmandat und hinterlegter IBAN. Die <b>SEPA-XML</b> lädst du im Online-Banking hoch (öffnet sich nicht in Excel). Die <b>Excel-Übersicht</b> ist zum Anschauen/Prüfen.</div>
     <div class="dt"><div class="dt-l">Lastschriften</div><div class="dt-v">${sepaMembers.length} Mitglied${sepaMembers.length===1?'':'er'} · Summe ${moneyDE(sepaSum)}</div></div>
     ${sepaMembers.length?`<div class="links" style="margin-top:8px">${sepaMembers.map(m=>`<span class="chip" title="${esc(m.iban)}">${esc(m.name)} – ${moneyDE(memberBeitrag(m))}</span>`).join('')}</div>`:'<div class="muted">Keine Mitglieder mit gültigem Mandat &amp; IBAN.</div>'}
   </div>`;
@@ -1234,13 +1237,36 @@ async function importBankdaten(input){
   }catch(e){ console.error(e); ieStatus('<span style="color:#c0392b">'+esc((e&&e.message)||e)+'</span>'); }
 }
 
+// Lastschriften als Excel-Übersicht (zum Anschauen/Prüfen – NICHT die Bankdatei)
+async function exportLastschriftenXlsx(){
+  const c=sepaCfg();
+  const list=members().filter(m=>isAktiv(m)&&m.sepaAktiv&&String(m.iban||'').trim());
+  if(!list.length){ toast('Keine Mitglieder mit Mandat & IBAN.','err'); return; }
+  try{
+    const XLSX=await loadXLSX();
+    const zweck=c.verwendung+' '+c.beitragsjahr;
+    const rows=list.map(m=>({
+      Name:m.name||'', Kontoinhaber:m.kontoinhaber||m.name||'', IBAN:m.iban||'', BIC:m.bic||'',
+      'Betrag €':Number(memberBeitrag(m).toFixed(2)),
+      Mandatsreferenz:m.mandatsref||'', 'Mandat vom':m.mandatsdatum||'', Verwendungszweck:zweck
+    }));
+    rows.push({ Name:'', Kontoinhaber:'', IBAN:'', BIC:'',
+      'Betrag €':Number(list.reduce((s,m)=>s+memberBeitrag(m),0).toFixed(2)),
+      Mandatsreferenz:'SUMME', 'Mandat vom':'', Verwendungszweck:'' });
+    const ws=XLSX.utils.json_to_sheet(rows);
+    const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Lastschriften');
+    XLSX.writeFile(wb, `VdG-Lastschriften-${c.beitragsjahr}.xlsx`);
+    toast('Excel-Übersicht erstellt ✓','ok');
+  }catch(e){ console.error(e); toast('Export fehlgeschlagen: '+((e&&e.message)||e),'err'); }
+}
+
 // ── Export für inline onclick ──────────────────────────────────────
 window.GV = {
   logout, show, onSearch, statusFilter, close:closeModal,
   forgotPw, changePw:changePwModal, savePw, addUser:addUserModal, saveUser,
   newMember, editMember, openMember, saveMemberForm, askDelMember, mailAlle, doArchive,
   copySepa, copySepaForm, amtPrev, manageAemter,
-  saveSepaCfg, exportSepa, mahnMail, mahnPdf, markBezahlt, resetMahn, beitragPrev, beitragPdf,
+  saveSepaCfg, exportSepa, exportLastschriftenXlsx, mahnMail, mahnPdf, markBezahlt, resetMahn, beitragPrev, beitragPdf,
   saveRechnungsfuehrer, clearRechnungsfuehrer,
   newVerstoss, saveVerstoss, verstossMail, verstossPdf, verstossErledigt, verstossDel,
   impExp, exportMitglieder, importMitglieder, importBankdaten,
