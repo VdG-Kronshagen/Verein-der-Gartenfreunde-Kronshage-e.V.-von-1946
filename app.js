@@ -413,7 +413,17 @@ function memberForm(m){
      <div class="field" style="flex:1;min-width:150px"><label>Mandatsreferenz</label><input id="m-mref" value="${esc(m.mandatsref||'')}"></div>
      <div class="field" style="flex:1;min-width:130px"><label>Mandat vom</label><input id="m-mdat" type="date" value="${esc(m.mandatsdatum||'')}"></div>
    </div>
-   <div class="field"><label>Jahresbeitrag € <span style="font-weight:400;text-transform:none">(leer = Standard aus Einstellungen)</span></label><input id="m-beitrag" type="number" step="0.01" min="0" value="${m.beitrag!=null&&m.beitrag!==''?esc(m.beitrag):''}" placeholder="z. B. 60"></div>
+   <div class="sec-head">💶 Beitrag / Abrechnung <span style="font-weight:400;text-transform:none;font-size:12px;color:var(--muted)">(Sätze in den Einstellungen)</span></div>
+   <div style="display:flex;gap:10px;flex-wrap:wrap">
+     <div class="field" style="flex:1;min-width:130px"><label>Gartenfläche (m²)</label><input id="m-flaeche" type="number" step="0.01" min="0" value="${m.flaeche!=null&&m.flaeche!==''?esc(m.flaeche):''}" placeholder="z. B. 350" oninput="GV.beitragPrev()"></div>
+     <div class="field" style="flex:1;min-width:130px"><label>Wasserverbrauch (m³)</label><input id="m-wasser" type="number" step="0.01" min="0" value="${m.wasserverbrauch!=null&&m.wasserverbrauch!==''?esc(m.wasserverbrauch):''}" placeholder="0" oninput="GV.beitragPrev()"></div>
+   </div>
+   <label class="ck"><input type="checkbox" id="m-gemein" ${m.gemeinschaftGeleistet?'checked':''} onchange="GV.beitragPrev()"> Gemeinschaftsarbeit geleistet (Betrag entfällt)</label>
+   <div style="display:flex;gap:10px;flex-wrap:wrap">
+     <div class="field" style="flex:1;min-width:150px"><label>Pforte nicht geöffnet (Anzahl Termine)</label><input id="m-pforte" type="number" step="1" min="0" value="${m.pforteCount?esc(m.pforteCount):''}" placeholder="0" oninput="GV.beitragPrev()"></div>
+     <div class="field" style="flex:1;min-width:150px"><label>Ersetzte Wasseruhren (Frost)</label><input id="m-frost" type="number" step="1" min="0" value="${m.frostCount?esc(m.frostCount):''}" placeholder="0" oninput="GV.beitragPrev()"></div>
+   </div>
+   <div id="m-beitrag-prev" class="beitrag-box">${beitragPrevHtml(m)}</div>
 
    <div class="field"><label>Notiz</label><textarea id="m-note" rows="2">${esc(m.note||'')}</textarea></div>
    ${vBlock}
@@ -443,6 +453,7 @@ function memberDetailHtml(m){
    ${det('🌳 Gartenparzellen (Verlauf)', parz)}
    ${det('🏅 Ämter (Verlauf)', aem)}
    ${det('🏦 SEPA-Lastschrift', sepa)}
+   ${isAktiv(m)?`<div class="dt"><div class="dt-l">💶 Beitrag ${esc(sepaCfg().beitragsjahr)}</div><div class="dt-v"><div class="beitrag-box">${beitragTableHtml(m)}</div><button class="btn" style="margin-top:8px" onclick="GV.beitragPdf('${m.id}')">🧾 Abrechnung drucken</button></div></div>`:''}
    <div class="actions-row" style="margin-top:18px">
      <button class="btn" onclick="GV.close()">Schließen</button>
      <button class="btn primary" onclick="GV.editMember('${m.id}')">✎ Bearbeiten</button>
@@ -460,7 +471,11 @@ function saveMemberForm(id){
     kontoinhaber:val('m-inhaber'), iban:val('m-iban'), bic:val('m-bic'),
     mandatsref:val('m-mref'), mandatsdatum:val('m-mdat'),
     status: ($('m-status')&&$('m-status').value)||'aktiv',
-    beitrag: (val('m-beitrag')!==''? parseFloat(val('m-beitrag')) : ''),
+    flaeche: (val('m-flaeche')!==''? num(val('m-flaeche')) : ''),
+    wasserverbrauch: (val('m-wasser')!==''? num(val('m-wasser')) : ''),
+    gemeinschaftGeleistet: !!($('m-gemein')&&$('m-gemein').checked),
+    pforteCount: (val('m-pforte')!==''? num(val('m-pforte')) : ''),
+    frostCount: (val('m-frost')!==''? num(val('m-frost')) : ''),
     createdAt:(ex&&ex.createdAt)||Date.now() };
   // Bestehende Beitrags-/Mahn-Daten erhalten (werden in der Beiträge-Ansicht gepflegt)
   if(ex){ if(ex.bezahltJahr!=null) rec.bezahltJahr=ex.bezahltJahr; if(ex.mahnStufe!=null) rec.mahnStufe=ex.mahnStufe; if(ex.mahnDatum) rec.mahnDatum=ex.mahnDatum; if(ex.austrittsdatum&&isFormer(rec)) rec.austrittsdatum=ex.austrittsdatum; }
@@ -535,12 +550,56 @@ function verteilerCopy(id){ const v=_cache.verteiler[id]; if(v) copyText(normEma
 // ══════════════════════════════════════════════════════════════════
 //  Beiträge: Einstellungen · SEPA-XML-Export (pain.008) · Mahnwesen
 // ══════════════════════════════════════════════════════════════════
-function sepaCfg(){ const c=(_cache.meta&&_cache.meta.sepaCfg)||{}; return {
-  glaeubigerId:c.glaeubigerId||'', vereinName:c.vereinName||'', iban:c.iban||'', bic:c.bic||'',
-  beitrag:(c.beitrag!=null&&c.beitrag!=='')?c.beitrag:'', faelligkeit:c.faelligkeit||'', verwendung:c.verwendung||'Mitgliedsbeitrag'
-}; }
+function num(v,def){ if(v==null||v==='') return def==null?0:def; const n=parseFloat(String(v).replace(',','.')); return isNaN(n)?(def==null?0:def):n; }
+// Alle Beitrags-Posten sind frei konfigurierbar (ändern sich jährlich). Die
+// hier hinterlegten Werte sind nur die Erst-Vorbelegung (Stand 2025).
+const POSTEN_DEF={ pachtProM2:0.144, jahresbeitrag:60, gemeinschaft:45, wasserverlust:11.39,
+  pauschaleWasser:10, versicherung:2, wasserzaehler:5, wasserpreis:0, pforteGebuehr:10, frostGebuehr:35 };
+function sepaCfg(){ const c=(_cache.meta&&_cache.meta.sepaCfg)||{}; const P=c.posten||{}; const po={};
+  Object.keys(POSTEN_DEF).forEach(k=>{ po[k]=(P[k]!=null&&P[k]!=='')?num(P[k],POSTEN_DEF[k]):POSTEN_DEF[k]; });
+  return {
+    glaeubigerId:c.glaeubigerId||'', vereinName:c.vereinName||'', iban:c.iban||'', bic:c.bic||'',
+    faelligkeit:c.faelligkeit||'', verwendung:c.verwendung||'Mitgliedsbeitrag',
+    beitragsjahr:(c.beitragsjahr!=null&&c.beitragsjahr!=='')?c.beitragsjahr:new Date().getFullYear(),
+    posten:po
+  };
+}
 function curYear(){ return new Date().getFullYear(); }
-function memberBeitrag(m){ const c=sepaCfg(); const b=(m.beitrag!=null&&m.beitrag!=='')?m.beitrag:c.beitrag; const n=parseFloat(b); return isNaN(n)?0:n; }
+function rateDE(n){ return Number(n).toFixed(3).replace(/0+$/,'').replace(/[.,]$/,'').replace('.',',')+' €'; }
+// Beitrags-Zusammenstellung eines Mitglieds aus den einzelnen Posten.
+// Liefert {gruppe:'pflicht'|'sonder'|'extra', label, detail, amount}.
+function beitragPosten(m){
+  const P=sepaCfg().posten; const out=[];
+  const fl=num(m.flaeche,0);
+  if(fl>0) out.push({gruppe:'pflicht', label:'Pacht', detail:`${String(fl).replace('.',',')} m² × ${rateDE(P.pachtProM2)}`, amount:fl*P.pachtProM2});
+  out.push({gruppe:'pflicht', label:'Jahresbeitrag', detail:'', amount:P.jahresbeitrag});
+  if(!m.gemeinschaftGeleistet) out.push({gruppe:'pflicht', label:'Gemeinschaftsarbeit', detail:'', amount:P.gemeinschaft});
+  out.push({gruppe:'sonder', label:'Wasserverlust', detail:'', amount:P.wasserverlust});
+  out.push({gruppe:'sonder', label:'Pauschale Erneuerung der Wasserversorgung', detail:'', amount:P.pauschaleWasser});
+  out.push({gruppe:'sonder', label:'Versicherungsgebühr', detail:'', amount:P.versicherung});
+  out.push({gruppe:'sonder', label:'Wasserzählergebühr', detail:'', amount:P.wasserzaehler});
+  const wv=num(m.wasserverbrauch,0);
+  if(wv>0 && P.wasserpreis>0) out.push({gruppe:'extra', label:'Wasserverbrauch', detail:`${String(wv).replace('.',',')} m³ × ${rateDE(P.wasserpreis)}`, amount:wv*P.wasserpreis});
+  const pf=num(m.pforteCount,0);
+  if(pf>0) out.push({gruppe:'extra', label:'Pforte nicht geöffnet', detail:`${pf} × ${moneyDE(P.pforteGebuehr)}`, amount:pf*P.pforteGebuehr});
+  const fr=num(m.frostCount,0);
+  if(fr>0) out.push({gruppe:'extra', label:'Ersetzte Wasseruhr (Frostschaden)', detail:`${fr} × ${moneyDE(P.frostGebuehr)}`, amount:fr*P.frostGebuehr});
+  return out;
+}
+function memberBeitrag(m){ return Math.round(beitragPosten(m).reduce((s,p)=>s+(p.amount||0),0)*100)/100; }
+function beitragTableHtml(m){
+  const items=beitragPosten(m);
+  const rows=items.map(p=>`<div class="bt-row"><span>${esc(p.label)}${p.detail?` <span class="muted" style="font-size:11px">${esc(p.detail)}</span>`:''}</span><span class="bt-amt">${moneyDE(p.amount)}</span></div>`).join('');
+  return `${rows}<div class="bt-row bt-sum"><span>Gesamtbeitrag</span><span class="bt-amt">${moneyDE(memberBeitrag(m))}</span></div>`;
+}
+function beitragPrevHtml(m){ return `<div class="bt-title">Beitrag ${esc(sepaCfg().beitragsjahr)}</div>${beitragTableHtml(m)}`; }
+// Werte aus dem geöffneten Mitglieds-Formular (für Live-Vorschau)
+function formBeitragVals(){ return {
+  flaeche:val('m-flaeche'), wasserverbrauch:val('m-wasser'),
+  gemeinschaftGeleistet:!!($('m-gemein')&&$('m-gemein').checked),
+  pforteCount:val('m-pforte'), frostCount:val('m-frost')
+}; }
+function beitragPrev(){ const box=$('m-beitrag-prev'); if(box) box.innerHTML=beitragPrevHtml(formBeitragVals()); }
 function faelligDate(){ const c=sepaCfg(); if(c.faelligkeit) return c.faelligkeit; return curYear()+'-12-31'; }
 // Überfällig: aktives Mitglied, für das laufende Jahr nicht als bezahlt markiert, Fälligkeit überschritten
 function isOverdue(m){ if(!isAktiv(m)) return false; if(m.bezahltJahr===curYear()) return false; const f=faelligDate(); const today=new Date().toISOString().slice(0,10); return today>=f; }
@@ -555,12 +614,16 @@ function viewBeitraege(){
   const overdue=all.filter(isOverdue).sort((a,b)=>(b.mahnStufe||0)-(a.mahnStufe||0)||String(a.name||'').localeCompare(String(b.name||''),'de'));
   const cfgOk = c.glaeubigerId && c.vereinName && c.iban;
   // — Einstellungen —
+  const P=c.posten;
+  const posF=(id,label,v,step)=>`<div class="field" style="flex:1;min-width:150px"><label>${label}</label><input id="${id}" type="number" step="${step||'0.01'}" min="0" value="${esc(v)}"></div>`;
   const settings=`<div class="sec">
     <h2><span>⚙️ Einstellungen Beitrag &amp; SEPA</span></h2>
-    <div class="muted" style="margin-bottom:10px">Diese Angaben werden für den SEPA-XML-Export und das Mahnwesen verwendet.</div>
+    <div class="muted" style="margin-bottom:10px">Alle Posten sind frei änderbar (sie ändern sich jährlich). Sie gelten für das angegebene Beitragsjahr und werden für die Beitrags-Berechnung, den SEPA-Export und das Mahnwesen verwendet.</div>
+
+    <div class="sec-head">🏦 SEPA / Gläubiger</div>
     <div style="display:flex;gap:10px;flex-wrap:wrap">
-      <div class="field" style="flex:1;min-width:200px"><label>Gläubiger-ID *</label><input id="cfg-glid" value="${esc(c.glaeubigerId)}" placeholder="DE98ZZZ09999999999"></div>
-      <div class="field" style="flex:1;min-width:140px"><label>Standard-Jahresbeitrag €</label><input id="cfg-beitrag" type="number" step="0.01" min="0" value="${c.beitrag!==''?esc(c.beitrag):''}" placeholder="z. B. 60"></div>
+      <div class="field" style="flex:2;min-width:200px"><label>Gläubiger-ID *</label><input id="cfg-glid" value="${esc(c.glaeubigerId)}" placeholder="DE98ZZZ09999999999"></div>
+      <div class="field" style="flex:1;min-width:120px"><label>Beitragsjahr</label><input id="cfg-jahr" type="number" step="1" value="${esc(c.beitragsjahr)}"></div>
     </div>
     <div class="field"><label>Vereinsname (Gläubiger) *</label><input id="cfg-name" value="${esc(c.vereinName)}" placeholder="Verein der Gartenfreunde Kronshagen e.V."></div>
     <div style="display:flex;gap:10px;flex-wrap:wrap">
@@ -571,6 +634,28 @@ function viewBeitraege(){
       <div class="field" style="flex:1;min-width:150px"><label>Fälligkeit / Einzugsdatum</label><input id="cfg-faellig" type="date" value="${esc(c.faelligkeit)}"></div>
       <div class="field" style="flex:2;min-width:180px"><label>Verwendungszweck</label><input id="cfg-zweck" value="${esc(c.verwendung)}" placeholder="Mitgliedsbeitrag"></div>
     </div>
+
+    <div class="sec-head" style="margin-top:14px">💶 Beitrags-Posten (${esc(c.beitragsjahr)})</div>
+    <div class="muted" style="margin-bottom:6px">Pflichtbeiträge</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      ${posF('cfg-pacht','Pacht pro m² €',P.pachtProM2,'0.001')}
+      ${posF('cfg-jahr-betrag','Jahresbeitrag €',P.jahresbeitrag)}
+      ${posF('cfg-gemein','Gemeinschaftsarbeit €',P.gemeinschaft)}
+    </div>
+    <div class="muted" style="margin:8px 0 6px">Sonderzahlung (pro Mitglied)</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      ${posF('cfg-wverlust','Wasserverlust €',P.wasserverlust)}
+      ${posF('cfg-wpausch','Pauschale Wasserversorgung €',P.pauschaleWasser)}
+      ${posF('cfg-versich','Versicherungsgebühr €',P.versicherung)}
+      ${posF('cfg-wzaehler','Wasserzählergebühr €',P.wasserzaehler)}
+    </div>
+    <div class="muted" style="margin:8px 0 6px">Variable Gebühren (nach Verbrauch / Anzahl)</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      ${posF('cfg-wpreis','Wasserpreis pro m³ €',P.wasserpreis)}
+      ${posF('cfg-pforte','Pforte nicht geöffnet € / Termin',P.pforteGebuehr)}
+      ${posF('cfg-frost','Frostschaden Wasseruhr € / Stück',P.frostGebuehr)}
+    </div>
+
     <div class="actions-row"><button class="btn primary" onclick="GV.saveSepaCfg()">Einstellungen speichern</button></div>
   </div>`;
   // — SEPA-Export —
@@ -610,8 +695,20 @@ function viewBeitraege(){
 function saveSepaCfg(){
   const cfg={ glaeubigerId:val('cfg-glid').trim(), vereinName:val('cfg-name').trim(),
     iban:val('cfg-iban').replace(/\s+/g,''), bic:val('cfg-bic').replace(/\s+/g,'').toUpperCase(),
-    beitrag:(val('cfg-beitrag')!==''?parseFloat(val('cfg-beitrag')):''),
-    faelligkeit:val('cfg-faellig'), verwendung:val('cfg-zweck').trim()||'Mitgliedsbeitrag' };
+    faelligkeit:val('cfg-faellig'), verwendung:val('cfg-zweck').trim()||'Mitgliedsbeitrag',
+    beitragsjahr:(val('cfg-jahr')!==''?parseInt(val('cfg-jahr'),10):curYear()),
+    posten:{
+      pachtProM2:num(val('cfg-pacht'),POSTEN_DEF.pachtProM2),
+      jahresbeitrag:num(val('cfg-jahr-betrag'),POSTEN_DEF.jahresbeitrag),
+      gemeinschaft:num(val('cfg-gemein'),POSTEN_DEF.gemeinschaft),
+      wasserverlust:num(val('cfg-wverlust'),POSTEN_DEF.wasserverlust),
+      pauschaleWasser:num(val('cfg-wpausch'),POSTEN_DEF.pauschaleWasser),
+      versicherung:num(val('cfg-versich'),POSTEN_DEF.versicherung),
+      wasserzaehler:num(val('cfg-wzaehler'),POSTEN_DEF.wasserzaehler),
+      wasserpreis:num(val('cfg-wpreis'),POSTEN_DEF.wasserpreis),
+      pforteGebuehr:num(val('cfg-pforte'),POSTEN_DEF.pforteGebuehr),
+      frostGebuehr:num(val('cfg-frost'),POSTEN_DEF.frostGebuehr)
+    } };
   saveMeta({sepaCfg:cfg}); render(); toast('Einstellungen gespeichert ✓','ok');
 }
 // — SEPA pain.008.001.02 —
@@ -629,10 +726,10 @@ function exportSepa(){
   const msgId=('VDG-'+now.getTime()).slice(0,35);
   const sum=list.reduce((s,m)=>s+memberBeitrag(m),0);
   const ctrl=money(sum);
-  const zweck=c.verwendung+' '+curYear();
+  const zweck=c.verwendung+' '+c.beitragsjahr;
   const tx=list.map((m,i)=>{
     const amt=money(memberBeitrag(m));
-    const e2e=('VDG-'+curYear()+'-'+(i+1)).slice(0,35);
+    const e2e=('VDG-'+c.beitragsjahr+'-'+(i+1)).slice(0,35);
     const mref=String(m.mandatsref||m.id||('M'+(i+1))).slice(0,35);
     const mdat=m.mandatsdatum||m.eintrittsdatum||c.faelligkeit||creDtTm.slice(0,10);
     const bic=String(m.bic||'').replace(/\s+/g,'').toUpperCase();
@@ -734,13 +831,50 @@ function resetMahn(id){ const m=_cache.mitglieder[id]; if(!m) return;
   const rec=Object.assign({},m,{mahnStufe:0}); delete rec.mahnDatum;
   saveMember(rec); render(); toast('Mahnstufe zurückgesetzt.',''); }
 
+// — Beitragsabrechnung (druckbare Zusammenstellung der Posten) —
+function beitragPdf(id){ const m=_cache.mitglieder[id]; if(!m) return; const c=sepaCfg();
+  const items=beitragPosten(m);
+  const grp=g=>items.filter(p=>p.gruppe===g);
+  const sumOf=arr=>arr.reduce((s,p)=>s+(p.amount||0),0);
+  const rowHtml=p=>`<tr><td>${esc(p.label)}${p.detail?` <span class="det">${esc(p.detail)}</span>`:''}</td><td class="amt">${esc(moneyDE(p.amount))}</td></tr>`;
+  const pflicht=grp('pflicht'), sonder=grp('sonder'), extra=grp('extra');
+  const heute=fmtDateShort(new Date().toISOString().slice(0,10));
+  const html=`<!DOCTYPE html><html lang="de"><head><meta charset="utf-8"><title>Beitragsabrechnung ${esc(c.beitragsjahr)} – ${esc(m.name||'')}</title>
+   <style>body{font-family:Arial,Helvetica,sans-serif;color:#222;max-width:680px;margin:40px auto;padding:0 24px;line-height:1.5}
+   .head{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #2f9e3f;padding-bottom:8px;margin-bottom:26px}
+   .head h1{color:#2f9e3f;font-size:20px;margin:0}.addr{margin:20px 0;white-space:pre-line}
+   h2{font-size:15px;margin:22px 0 6px}
+   table{width:100%;border-collapse:collapse}td{padding:4px 0;border-bottom:1px solid #eee;vertical-align:top}
+   td.amt{text-align:right;white-space:nowrap;width:120px}.det{color:#777;font-size:12px}
+   tr.sub td{font-weight:700;border-top:1px solid #ccc;border-bottom:none}
+   tr.total td{font-weight:700;font-size:17px;color:#2f9e3f;border-top:2px solid #2f9e3f;border-bottom:none;padding-top:8px}
+   .note{margin-top:22px;font-size:12px;color:#555;border-top:1px solid #eee;padding-top:10px}
+   @media print{body{margin:0}.noprint{display:none}}</style></head>
+   <body>
+    <div class="head"><h1>${esc(c.vereinName||'Verein der Gartenfreunde Kronshagen e.V.')}</h1><div style="text-align:right;font-size:13px;color:#555">${esc(heute)}</div></div>
+    <div class="addr">${esc(m.name||'')}${m.adresse?'\n'+esc(m.adresse):''}</div>
+    <h1 style="font-size:18px;color:#222">Beitragsabrechnung ${esc(c.beitragsjahr)}</h1>
+    <h2>Pflichtbeiträge</h2>
+    <table>${pflicht.map(rowHtml).join('')}</table>
+    <h2>Sonderzahlung</h2>
+    <table>${sonder.map(rowHtml).join('')}<tr class="sub"><td>Summe der Sonderzahlung</td><td class="amt">${esc(moneyDE(sumOf(sonder)))}</td></tr></table>
+    ${extra.length?`<h2>Weitere Gebühren</h2><table>${extra.map(rowHtml).join('')}</table>`:''}
+    <table style="margin-top:14px"><tr class="total"><td>Gesamtbeitrag ${esc(c.beitragsjahr)}</td><td class="amt">${esc(moneyDE(memberBeitrag(m)))}</td></tr></table>
+    ${(m.sepaAktiv&&m.iban)?`<div class="note">Der Betrag wird per SEPA-Lastschrift von Ihrem Konto (IBAN ${esc(m.iban)}) eingezogen${c.faelligkeit?' zum '+fmtDateShort(c.faelligkeit):''}.</div>`:`<div class="note">Bitte überweisen Sie den Gesamtbetrag${c.faelligkeit?' bis zum '+fmtDateShort(c.faelligkeit):''} auf das Vereinskonto${c.iban?' (IBAN '+esc(c.iban)+')':''}. Verwendungszweck: ${esc(c.verwendung)} ${esc(c.beitragsjahr)} – ${esc(m.name||'')}.</div>`}
+    <div class="note">Hinweis: Gartenfreunde, die ihre Gartenpforten zum Aus-/Einbau der Wasserzähler nicht geöffnet hatten, zahlen je angekündigtem Termin ${esc(moneyDE(c.posten.pforteGebuehr))} für die Extraleistung des Wasserwarts. Für jede infolge eines Frostschadens ersetzte Wasseruhr werden ${esc(moneyDE(c.posten.frostGebuehr))} berechnet. Hinzu kommt der tatsächliche Wasserverbrauch.</div>
+    <div class="noprint" style="margin-top:26px"><button onclick="window.print()" style="padding:10px 18px;font-size:15px;background:#2f9e3f;color:#fff;border:0;border-radius:8px;cursor:pointer">🖨️ Drucken / als PDF speichern</button></div>
+   </body></html>`;
+  const w=window.open('','_blank'); if(!w){ toast('Bitte Popups erlauben.','err'); return; }
+  w.document.open(); w.document.write(html); w.document.close();
+}
+
 // ── Export für inline onclick ──────────────────────────────────────
 window.GV = {
   logout, show, onSearch, statusFilter, close:closeModal,
   forgotPw, changePw:changePwModal, savePw, addUser:addUserModal, saveUser,
   newMember, editMember, openMember, saveMemberForm, askDelMember, mailAlle, doArchive,
   copySepa, copySepaForm, amtPrev, manageAemter,
-  saveSepaCfg, exportSepa, mahnMail, mahnPdf, markBezahlt, resetMahn,
+  saveSepaCfg, exportSepa, mahnMail, mahnPdf, markBezahlt, resetMahn, beitragPrev, beitragPdf,
   addParz:()=>$('m-parz').insertAdjacentHTML('beforeend', parzRowHtml({})),
   delParz:(btn)=>{ const r=btn.closest('.parz-row'); if(r) r.remove(); },
   addAmt:()=>$('m-amt').insertAdjacentHTML('beforeend', amtRowHtml({})),
