@@ -64,6 +64,24 @@
 
   <script src="firebase-config.js?v=1"></script>
   <script src="app.js?v=21"></script>
-  <script>if('serviceWorker' in navigator){ window.addEventListener('load', function(){ navigator.serviceWorker.register('sw.js').catch(function(){}); }); }</script>
+  <script>
+  // Auto-Update: prüft regelmäßig auf eine neue Version und lädt die App dann
+  // EINMAL automatisch neu – so erscheinen Änderungen ohne manuelles Neuladen.
+  if('serviceWorker' in navigator){
+    window.addEventListener('load', function(){
+      navigator.serviceWorker.register('sw.js').then(function(reg){
+        try{ reg.update(); }catch(e){}
+        setInterval(function(){ try{ reg.update(); }catch(e){} }, 60000);
+        reg.addEventListener('updatefound', function(){
+          var nw=reg.installing; if(!nw) return;
+          nw.addEventListener('statechange', function(){
+            // Neue Version installiert UND es lief bereits eine → einmal neu laden
+            if(nw.state==='installed' && navigator.serviceWorker.controller){ location.reload(); }
+          });
+        });
+      }).catch(function(){});
+    });
+  }
+  </script>
 </body>
 </html>
