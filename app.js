@@ -41,7 +41,7 @@ const newId = () => 'g'+Date.now().toString(36)+Math.random().toString(36).slice
 // ── State ──────────────────────────────────────────────────────────
 let _user=null, _ref=null;
 let _cache={ mitglieder:{}, verteiler:{}, meta:{} };
-let _view='mitglieder', _q='';
+let _view='mitglieder', _q='', _statusFilter='';
 
 function members(){ return Object.values(_cache.mitglieder||{}).sort((a,b)=>String(a.name||'').localeCompare(String(b.name||''),'de',{sensitivity:'base'})); }
 function lists(){ return Object.values(_cache.verteiler||{}).sort((a,b)=>String(a.name||'').localeCompare(String(b.name||''),'de',{sensitivity:'base'})); }
@@ -180,10 +180,12 @@ function delListe(id){ if(_cache.verteiler) delete _cache.verteiler[id]; if(_ref
 // ══════════════════════════════════════════════════════════════════
 function show(v){ _view=v; _q=''; const s=$('search'); if(s) s.value=''; render(); }
 function onSearch(v){ _q=String(v||'').toLowerCase().trim(); render(); }
+function statusFilter(v){ _statusFilter=v||''; render(); }
 function render(){
   $('tab-mitglieder').classList.toggle('active', _view==='mitglieder');
   $('tab-verteiler').classList.toggle('active', _view==='verteiler');
-  $('view').innerHTML = _view==='verteiler' ? viewVerteiler() : viewMitglieder();
+  const tb=$('tab-beitraege'); if(tb) tb.classList.toggle('active', _view==='beitraege');
+  $('view').innerHTML = _view==='verteiler' ? viewVerteiler() : (_view==='beitraege' ? viewBeitraege() : viewMitglieder());
 }
 
 // ── Mitglieder ─────────────────────────────────────────────────────
@@ -195,11 +197,12 @@ function memberCard(m){ const amt=currentAmt(m), pz=currentParz(m);
         ${m.email?`<a href="${mailHref(m.email)}">✉️ ${esc(m.email)}</a>`:''}
         ${m.tel?`<a href="${telHref(m.tel)}">📞 ${esc(m.tel)}</a>`:''}
       </div>`:''}
-      ${(amt||pz||m.sepaAktiv)?`<div class="links" style="margin-top:6px">
+      <div class="links" style="margin-top:6px">
+        ${statusChip(m)}
         ${amt?`<span class="chip cur">🏅 ${esc(amt)}</span>`:''}
         ${pz?`<span class="chip">🌳 Parzelle ${esc(pz)}</span>`:''}
         ${m.sepaAktiv?`<span class="chip">🏦 SEPA</span>`:''}
-      </div>`:''}
+      </div>
     </div>`; }
 function leftCard(m){ return `<div class="card" style="cursor:pointer" onclick="GV.openMember('${m.id}')">
       <h3>${esc(m.name||'(ohne Name)')}</h3>
@@ -208,6 +211,7 @@ function leftCard(m){ return `<div class="card" style="cursor:pointer" onclick="
     </div>`; }
 function viewMitglieder(){
   let arr=members(); if(_q) arr=arr.filter(matchM);
+  if(_statusFilter) arr=arr.filter(m=>mStatus(m)===_statusFilter);
   const active=arr.filter(isAktiv), left=arr.filter(m=>!isAktiv(m));
   // Übersicht: Amtsinhaber oben, der Rest nach niedrigster Parzellennummer
   active.sort((a,b)=>{
@@ -222,8 +226,11 @@ function viewMitglieder(){
   const cards=active.map(memberCard).join('') || `<div class="muted">${_q?'Keine aktiven Treffer.':'Noch keine Mitglieder. Lege das erste an.'}</div>`;
   return `<div class="sec">
     <h2><span>👥 Mitglieder (${members().filter(isAktiv).length})</span>
-      <span style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn" title="Ämter-Bezeichnungen bearbeiten" onclick="GV.manageAemter()">⚙ Ämter</button>
+      <span style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <select class="btn" style="font-weight:600" onchange="GV.statusFilter(this.value)" title="Nach Status filtern">
+          <option value="" ${_statusFilter===''?'selected':''}>Status: Alle</option>
+          ${STATUS_OPTS.concat([['verstorben','Verstorben']]).map(([v,l])=>`<option value="${v}" ${_statusFilter===v?'selected':''}>${l}</option>`).join('')}
+        </select>
         ${anyMail?`<button class="btn" title="Mail an alle aktiven (BCC)" onclick="GV.mailAlle()">✉️ Mail an alle</button>`:''}
         <button class="btn primary" onclick="GV.newMember()">＋ Mitglied</button>
       </span></h2>
@@ -334,6 +341,14 @@ function copySepaForm(){
 }
 function isFormer(m){ return m.status==='ausgetreten' || m.status==='verstorben'; }
 function statusLabel(m){ return m.status==='verstorben' ? ('🕯️ verstorben'+(m.austrittsdatum?' am '+fmtDateShort(m.austrittsdatum):'')) : ('🚪 ausgetreten'+(m.austrittsdatum?' am '+fmtDateShort(m.austrittsdatum):'')); }
+// ── Mitgliedsstatus ───────────────────────────────────────────────
+const STATUS_OPTS=[['aktiv','Aktiv'],['passiv','Passiv'],['ehrenmitglied','Ehrenmitglied'],['ausgetreten','Ausgetreten']];
+const STATUS_LABEL={aktiv:'Aktiv',passiv:'Passiv',ehrenmitglied:'Ehrenmitglied',ausgetreten:'Ausgetreten',verstorben:'Verstorben'};
+function mStatus(m){ return m.status||'aktiv'; }
+function statusChip(m){ const s=mStatus(m); if(s==='aktiv') return '';
+  const col=s==='ehrenmitglied'?'background:#fff7e0;border-color:#f0d58a;color:#8a6d00':(s==='passiv'?'background:#eef2f8;border-color:#dbe2ee;color:#5a6b85':'');
+  return `<span class="chip" style="${col}">${esc(STATUS_LABEL[s]||s)}</span>`;
+}
 function currentParz(m){ if(isFormer(m)) return ''; const ps=Array.isArray(m.parzellen)?m.parzellen:[]; const open=ps.filter(p=>!p.bis); if(open.length) return open[open.length-1].nr; return ''; }
 function fmtDateShort(s){ if(!s) return ''; const p=String(s).split('-'); return p.length===3?`${p[2]}.${p[1]}.${p[0]}`:String(s); }
 function parzRange(p){ return `(${fmtDateShort(p.von)||'?'} – ${p.bis?fmtDateShort(p.bis):'heute'})`; }
@@ -368,7 +383,10 @@ function memberForm(m){
   return `<h3>${m.id?'✎ Mitglied':'＋ Mitglied'}</h3>
    ${isFormer(m)?`<div style="background:#fdecea;border:1px solid #f0bcb6;border-radius:8px;padding:8px 10px;margin-bottom:12px;color:#c0392b;font-size:13px">${statusLabel(m)} – persönliche Daten wurden gelöscht. Name, Parzellen- &amp; Ämter-Verlauf bleiben erhalten.</div>`:''}
    <div class="field"><label>Name *</label><input id="m-name" value="${esc(m.name||'')}"></div>
-   <div class="field"><label>Eintrittsdatum</label><input id="m-eintritt" type="date" value="${esc(m.eintrittsdatum||'')}"></div>
+   <div style="display:flex;gap:10px;flex-wrap:wrap">
+     <div class="field" style="flex:1;min-width:150px"><label>Status</label><select id="m-status">${STATUS_OPTS.concat(mStatus(m)==='verstorben'?[['verstorben','Verstorben']]:[]).map(([v,l])=>`<option value="${v}" ${mStatus(m)===v?'selected':''}>${l}</option>`).join('')}</select></div>
+     <div class="field" style="flex:1;min-width:140px"><label>Eintrittsdatum</label><input id="m-eintritt" type="date" value="${esc(m.eintrittsdatum||'')}"></div>
+   </div>
    <div class="field"><label>E-Mail</label><input id="m-email" type="email" value="${esc(m.email||'')}"></div>
    <div class="field"><label>Telefon</label><input id="m-tel" value="${esc(m.tel||'')}"></div>
    <div class="field"><label>Adresse</label><input id="m-adresse" value="${esc(m.adresse||'')}"></div>
@@ -395,6 +413,7 @@ function memberForm(m){
      <div class="field" style="flex:1;min-width:150px"><label>Mandatsreferenz</label><input id="m-mref" value="${esc(m.mandatsref||'')}"></div>
      <div class="field" style="flex:1;min-width:130px"><label>Mandat vom</label><input id="m-mdat" type="date" value="${esc(m.mandatsdatum||'')}"></div>
    </div>
+   <div class="field"><label>Jahresbeitrag € <span style="font-weight:400;text-transform:none">(leer = Standard aus Einstellungen)</span></label><input id="m-beitrag" type="number" step="0.01" min="0" value="${m.beitrag!=null&&m.beitrag!==''?esc(m.beitrag):''}" placeholder="z. B. 60"></div>
 
    <div class="field"><label>Notiz</label><textarea id="m-note" rows="2">${esc(m.note||'')}</textarea></div>
    ${vBlock}
@@ -415,6 +434,7 @@ function memberDetailHtml(m){
   const sepa = (m.sepaAktiv||m.iban) ? `${esc(m.kontoinhaber||m.name||'')}${m.iban?'<br>IBAN: '+esc(m.iban):''}${m.bic?'<br>BIC: '+esc(m.bic):''}${m.mandatsref?'<br>Mandat: '+esc(m.mandatsref)+(m.mandatsdatum?' vom '+fmtDateShort(m.mandatsdatum):''):''}${m.iban?`<br><button class="btn" style="margin-top:8px" onclick="GV.copySepa('${m.id}')">⧉ Bankdaten kopieren</button>`:''}` : '';
   return `<h3 style="margin-bottom:4px">${esc(m.name||'(ohne Name)')}</h3>
    ${isFormer(m)?`<div style="background:#fdecea;border:1px solid #f0bcb6;border-radius:8px;padding:6px 10px;margin-bottom:12px;color:#c0392b;font-size:13px">${statusLabel(m)}</div>`:'<div style="margin-bottom:14px"></div>'}
+   ${det('Status', esc(STATUS_LABEL[mStatus(m)]||'Aktiv'))}
    ${det('Eintrittsdatum', m.eintrittsdatum?fmtDateShort(m.eintrittsdatum):'')}
    ${det('E-Mail', m.email?`<a href="${mailHref(m.email)}">${esc(m.email)}</a>`:'')}
    ${det('Telefon', m.tel?`<a href="${telHref(m.tel)}">${esc(m.tel)}</a>`:'')}
@@ -439,8 +459,11 @@ function saveMemberForm(id){
     sepaAktiv:!!($('m-sepa')&&$('m-sepa').checked),
     kontoinhaber:val('m-inhaber'), iban:val('m-iban'), bic:val('m-bic'),
     mandatsref:val('m-mref'), mandatsdatum:val('m-mdat'),
+    status: ($('m-status')&&$('m-status').value)||'aktiv',
+    beitrag: (val('m-beitrag')!==''? parseFloat(val('m-beitrag')) : ''),
     createdAt:(ex&&ex.createdAt)||Date.now() };
-  if(ex&&isFormer(ex)){ rec.status=ex.status; rec.austrittsdatum=ex.austrittsdatum||''; }
+  // Bestehende Beitrags-/Mahn-Daten erhalten (werden in der Beiträge-Ansicht gepflegt)
+  if(ex){ if(ex.bezahltJahr!=null) rec.bezahltJahr=ex.bezahltJahr; if(ex.mahnStufe!=null) rec.mahnStufe=ex.mahnStufe; if(ex.mahnDatum) rec.mahnDatum=ex.mahnDatum; if(ex.austrittsdatum&&isFormer(rec)) rec.austrittsdatum=ex.austrittsdatum; }
   // Verteiler-Mitgliedschaft (vor close lesen)
   const want=new Set(Array.from(document.querySelectorAll('.m-vt:checked')).map(x=>x.value));
   const allBoxes=Array.from(document.querySelectorAll('.m-vt')).map(x=>x.value);
@@ -509,12 +532,215 @@ function askDelListe(id){ const v=_cache.verteiler[id]; if(!v) return; if(!confi
 function verteilerMail(id){ const v=_cache.verteiler[id]; if(v) openMail(v.emails,'bcc'); }
 function verteilerCopy(id){ const v=_cache.verteiler[id]; if(v) copyText(normEmails(v.emails).join('; ')); }
 
+// ══════════════════════════════════════════════════════════════════
+//  Beiträge: Einstellungen · SEPA-XML-Export (pain.008) · Mahnwesen
+// ══════════════════════════════════════════════════════════════════
+function sepaCfg(){ const c=(_cache.meta&&_cache.meta.sepaCfg)||{}; return {
+  glaeubigerId:c.glaeubigerId||'', vereinName:c.vereinName||'', iban:c.iban||'', bic:c.bic||'',
+  beitrag:(c.beitrag!=null&&c.beitrag!=='')?c.beitrag:'', faelligkeit:c.faelligkeit||'', verwendung:c.verwendung||'Mitgliedsbeitrag'
+}; }
+function curYear(){ return new Date().getFullYear(); }
+function memberBeitrag(m){ const c=sepaCfg(); const b=(m.beitrag!=null&&m.beitrag!=='')?m.beitrag:c.beitrag; const n=parseFloat(b); return isNaN(n)?0:n; }
+function faelligDate(){ const c=sepaCfg(); if(c.faelligkeit) return c.faelligkeit; return curYear()+'-12-31'; }
+// Überfällig: aktives Mitglied, für das laufende Jahr nicht als bezahlt markiert, Fälligkeit überschritten
+function isOverdue(m){ if(!isAktiv(m)) return false; if(m.bezahltJahr===curYear()) return false; const f=faelligDate(); const today=new Date().toISOString().slice(0,10); return today>=f; }
+function money(n){ return (Math.round(Number(n)*100)/100).toFixed(2); }
+function moneyDE(n){ return money(n).replace('.',',')+' €'; }
+
+function viewBeitraege(){
+  const c=sepaCfg();
+  const all=members();
+  const sepaMembers=all.filter(m=>isAktiv(m)&&m.sepaAktiv&&String(m.iban||'').trim());
+  const sepaSum=sepaMembers.reduce((s,m)=>s+memberBeitrag(m),0);
+  const overdue=all.filter(isOverdue).sort((a,b)=>(b.mahnStufe||0)-(a.mahnStufe||0)||String(a.name||'').localeCompare(String(b.name||''),'de'));
+  const cfgOk = c.glaeubigerId && c.vereinName && c.iban;
+  // — Einstellungen —
+  const settings=`<div class="sec">
+    <h2><span>⚙️ Einstellungen Beitrag &amp; SEPA</span></h2>
+    <div class="muted" style="margin-bottom:10px">Diese Angaben werden für den SEPA-XML-Export und das Mahnwesen verwendet.</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <div class="field" style="flex:1;min-width:200px"><label>Gläubiger-ID *</label><input id="cfg-glid" value="${esc(c.glaeubigerId)}" placeholder="DE98ZZZ09999999999"></div>
+      <div class="field" style="flex:1;min-width:140px"><label>Standard-Jahresbeitrag €</label><input id="cfg-beitrag" type="number" step="0.01" min="0" value="${c.beitrag!==''?esc(c.beitrag):''}" placeholder="z. B. 60"></div>
+    </div>
+    <div class="field"><label>Vereinsname (Gläubiger) *</label><input id="cfg-name" value="${esc(c.vereinName)}" placeholder="Verein der Gartenfreunde Kronshagen e.V."></div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <div class="field" style="flex:2;min-width:200px"><label>Vereins-IBAN *</label><input id="cfg-iban" value="${esc(c.iban)}" placeholder="DE.."></div>
+      <div class="field" style="flex:1;min-width:110px"><label>Vereins-BIC</label><input id="cfg-bic" value="${esc(c.bic)}"></div>
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <div class="field" style="flex:1;min-width:150px"><label>Fälligkeit / Einzugsdatum</label><input id="cfg-faellig" type="date" value="${esc(c.faelligkeit)}"></div>
+      <div class="field" style="flex:2;min-width:180px"><label>Verwendungszweck</label><input id="cfg-zweck" value="${esc(c.verwendung)}" placeholder="Mitgliedsbeitrag"></div>
+    </div>
+    <div class="actions-row"><button class="btn primary" onclick="GV.saveSepaCfg()">Einstellungen speichern</button></div>
+  </div>`;
+  // — SEPA-Export —
+  const sepaSec=`<div class="sec" style="margin-top:16px">
+    <h2><span>🏦 SEPA-Lastschrift-Export</span>
+      <button class="btn primary" ${(!cfgOk||!sepaMembers.length)?'disabled style="opacity:.5;cursor:not-allowed"':''} onclick="GV.exportSepa()">⬇️ SEPA-XML erzeugen (pain.008)</button>
+    </h2>
+    ${!cfgOk?`<div class="muted" style="color:#c0392b">Bitte zuerst Gläubiger-ID, Vereinsname und Vereins-IBAN in den Einstellungen ausfüllen.</div>`:''}
+    <div class="muted" style="margin-bottom:8px">Exportiert werden alle aktiven Mitglieder mit erteiltem Lastschriftmandat und hinterlegter IBAN.</div>
+    <div class="dt"><div class="dt-l">Lastschriften</div><div class="dt-v">${sepaMembers.length} Mitglied${sepaMembers.length===1?'':'er'} · Summe ${moneyDE(sepaSum)}</div></div>
+    ${sepaMembers.length?`<div class="links" style="margin-top:8px">${sepaMembers.map(m=>`<span class="chip" title="${esc(m.iban)}">${esc(m.name)} – ${moneyDE(memberBeitrag(m))}</span>`).join('')}</div>`:'<div class="muted">Keine Mitglieder mit gültigem Mandat &amp; IBAN.</div>'}
+  </div>`;
+  // — Mahnwesen —
+  const mahnRows=overdue.map(m=>{ const st=m.mahnStufe||0;
+    const stTxt=st===0?'<span class="chip">offen</span>':`<span class="chip" style="background:#fdecea;border-color:#f0bcb6;color:#c0392b">Mahnstufe ${st}</span>`;
+    const dat=m.mahnDatum?`<span class="muted" style="font-size:12px"> · zuletzt ${fmtDateShort(m.mahnDatum)}</span>`:'';
+    const hasMail=String(m.email||'').trim();
+    return `<div class="card">
+      <h3>${esc(m.name||'(ohne Name)')} <span style="font-weight:600;color:var(--muted);font-size:13px">– ${moneyDE(memberBeitrag(m))}</span></h3>
+      <div class="sub">${stTxt}${dat}</div>
+      <div class="actions" style="margin-top:8px;flex-wrap:wrap">
+        <button class="btn" ${hasMail?'':'disabled style="opacity:.5"'} title="${hasMail?'':'Keine E-Mail hinterlegt'}" onclick="GV.mahnMail('${m.id}',1)">✉️ Stufe 1: Erinnerung</button>
+        <button class="btn" ${hasMail?'':'disabled style="opacity:.5"'} onclick="GV.mahnMail('${m.id}',2)">✉️ Stufe 2: 1. Mahnung</button>
+        <button class="btn" onclick="GV.mahnPdf('${m.id}')">🖨️ Stufe 3: Letzte Mahnung (PDF)</button>
+        <button class="btn primary" onclick="GV.markBezahlt('${m.id}')">✓ Bezahlt</button>
+        ${st?`<button class="x" title="Mahnstufe zurücksetzen" onclick="GV.resetMahn('${m.id}')">↺</button>`:''}
+      </div>
+    </div>`;
+  }).join('') || `<div class="muted">🎉 Keine überfälligen Beiträge. Alle aktiven Mitglieder sind für ${curYear()} bezahlt.</div>`;
+  const mahnSec=`<div class="sec" style="margin-top:16px">
+    <h2><span>⏰ Mahnwesen (${overdue.length})</span></h2>
+    <div class="muted" style="margin-bottom:10px">Überfällig = aktives Mitglied ohne Zahlungseingang ${curYear()} nach Fälligkeit (${fmtDateShort(faelligDate())}). „Bezahlt" markiert den Beitrag ${curYear()} als beglichen und entfernt das Mitglied aus der Liste.</div>
+    <div class="list">${mahnRows}</div>
+  </div>`;
+  return settings + sepaSec + mahnSec;
+}
+function saveSepaCfg(){
+  const cfg={ glaeubigerId:val('cfg-glid').trim(), vereinName:val('cfg-name').trim(),
+    iban:val('cfg-iban').replace(/\s+/g,''), bic:val('cfg-bic').replace(/\s+/g,'').toUpperCase(),
+    beitrag:(val('cfg-beitrag')!==''?parseFloat(val('cfg-beitrag')):''),
+    faelligkeit:val('cfg-faellig'), verwendung:val('cfg-zweck').trim()||'Mitgliedsbeitrag' };
+  saveMeta({sepaCfg:cfg}); render(); toast('Einstellungen gespeichert ✓','ok');
+}
+// — SEPA pain.008.001.02 —
+function xmlEsc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function sepaName(s){ return xmlEsc(String(s||'').replace(/[^A-Za-z0-9 ÄÖÜäöüß\.,\-\/]/g,' ').trim().slice(0,70)); }
+function exportSepa(){
+  const c=sepaCfg();
+  if(!c.glaeubigerId||!c.vereinName||!c.iban){ toast('Bitte Einstellungen vollständig ausfüllen.','err'); return; }
+  const list=members().filter(m=>isAktiv(m)&&m.sepaAktiv&&String(m.iban||'').trim());
+  if(!list.length){ toast('Keine Mitglieder mit Mandat & IBAN.','err'); return; }
+  const now=new Date();
+  const pad=n=>String(n).padStart(2,'0');
+  const creDtTm=`${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+  const colltnDt=faelligDate();
+  const msgId=('VDG-'+now.getTime()).slice(0,35);
+  const sum=list.reduce((s,m)=>s+memberBeitrag(m),0);
+  const ctrl=money(sum);
+  const zweck=c.verwendung+' '+curYear();
+  const tx=list.map((m,i)=>{
+    const amt=money(memberBeitrag(m));
+    const e2e=('VDG-'+curYear()+'-'+(i+1)).slice(0,35);
+    const mref=String(m.mandatsref||m.id||('M'+(i+1))).slice(0,35);
+    const mdat=m.mandatsdatum||m.eintrittsdatum||c.faelligkeit||creDtTm.slice(0,10);
+    const bic=String(m.bic||'').replace(/\s+/g,'').toUpperCase();
+    const dbtrAgt = bic
+      ? `<DbtrAgt><FinInstnId><BIC>${xmlEsc(bic)}</BIC></FinInstnId></DbtrAgt>`
+      : `<DbtrAgt><FinInstnId><Othr><Id>NOTPROVIDED</Id></Othr></FinInstnId></DbtrAgt>`;
+    return `      <DrctDbtTxInf>
+        <PmtId><EndToEndId>${xmlEsc(e2e)}</EndToEndId></PmtId>
+        <InstdAmt Ccy="EUR">${amt}</InstdAmt>
+        <DrctDbtTx><MndtRltdInf><MndtId>${xmlEsc(mref)}</MndtId><DtOfSgntr>${xmlEsc(mdat)}</DtOfSgntr></MndtRltdInf></DrctDbtTx>
+        ${dbtrAgt}
+        <Dbtr><Nm>${sepaName(m.kontoinhaber||m.name)}</Nm></Dbtr>
+        <DbtrAcct><Id><IBAN>${xmlEsc(String(m.iban).replace(/\s+/g,'').toUpperCase())}</IBAN></Id></DbtrAcct>
+        <RmtInf><Ustrd>${sepaName(zweck)}</Ustrd></RmtInf>
+      </DrctDbtTxInf>`;
+  }).join('\n');
+  const cdtrBic = c.bic ? `<CdtrAgt><FinInstnId><BIC>${xmlEsc(c.bic)}</BIC></FinInstnId></CdtrAgt>` : `<CdtrAgt><FinInstnId><Othr><Id>NOTPROVIDED</Id></Othr></FinInstnId></CdtrAgt>`;
+  const xml=`<?xml version="1.0" encoding="UTF-8"?>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pain.008.001.02" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <CstmrDrctDbtInitn>
+    <GrpHdr>
+      <MsgId>${xmlEsc(msgId)}</MsgId>
+      <CreDtTm>${creDtTm}</CreDtTm>
+      <NbOfTxs>${list.length}</NbOfTxs>
+      <CtrlSum>${ctrl}</CtrlSum>
+      <InitgPty><Nm>${sepaName(c.vereinName)}</Nm></InitgPty>
+    </GrpHdr>
+    <PmtInf>
+      <PmtInfId>${xmlEsc(msgId)}</PmtInfId>
+      <PmtMtd>DD</PmtMtd>
+      <BtchBookg>true</BtchBookg>
+      <NbOfTxs>${list.length}</NbOfTxs>
+      <CtrlSum>${ctrl}</CtrlSum>
+      <PmtTpInf><SvcLvl><Cd>SEPA</Cd></SvcLvl><LclInstrm><Cd>CORE</Cd></LclInstrm><SeqTp>RCUR</SeqTp></PmtTpInf>
+      <ReqdColltnDt>${xmlEsc(colltnDt)}</ReqdColltnDt>
+      <Cdtr><Nm>${sepaName(c.vereinName)}</Nm></Cdtr>
+      <CdtrAcct><Id><IBAN>${xmlEsc(String(c.iban).replace(/\s+/g,'').toUpperCase())}</IBAN></Id></CdtrAcct>
+      ${cdtrBic}
+      <ChrgBr>SLEV</ChrgBr>
+      <CdtrSchmeId><Id><PrvtId><Othr><Id>${xmlEsc(c.glaeubigerId)}</Id><SchmeNm><Prtry>SEPA</Prtry></SchmeNm></Othr></PrvtId></Id></CdtrSchmeId>
+${tx}
+    </PmtInf>
+  </CstmrDrctDbtInitn>
+</Document>`;
+  const blob=new Blob([xml],{type:'application/xml'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a'); a.href=url; a.download=`SEPA-Lastschrift-${curYear()}.xml`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url),2000);
+  toast(`SEPA-XML mit ${list.length} Lastschriften erzeugt ✓`,'ok');
+}
+// — Mahnwesen —
+const MAHN_TXT={
+  1:{betreff:'Zahlungserinnerung Mitgliedsbeitrag',gruss:'Zahlungserinnerung',einl:'wir möchten Sie freundlich daran erinnern, dass der Mitgliedsbeitrag für das laufende Jahr noch offen ist.'},
+  2:{betreff:'1. Mahnung – Mitgliedsbeitrag',gruss:'1. Mahnung',einl:'trotz unserer Erinnerung konnten wir bisher keinen Zahlungseingang für den Mitgliedsbeitrag feststellen. Wir bitten Sie, den offenen Betrag zeitnah zu begleichen.'},
+  3:{betreff:'Letzte Mahnung – Mitgliedsbeitrag',gruss:'Letzte Mahnung',einl:'leider ist der Mitgliedsbeitrag trotz mehrfacher Aufforderung weiterhin offen. Dies ist die letzte Mahnung, bevor weitere Schritte eingeleitet werden.'}
+};
+function mahnBody(m,stufe){ const c=sepaCfg(); const t=MAHN_TXT[stufe];
+  const betrag=moneyDE(memberBeitrag(m));
+  return `Sehr geehrte/r ${m.name||'Mitglied'},\n\n${t.einl}\n\nOffener Betrag: ${betrag} (${c.verwendung} ${curYear()})\nFällig seit: ${fmtDateShort(faelligDate())}\n\nBitte überweisen Sie den Betrag auf folgendes Konto:\n${c.vereinName}\nIBAN: ${c.iban}${c.bic?'\nBIC: '+c.bic:''}\nVerwendungszweck: ${c.verwendung} ${curYear()} – ${m.name||''}\n\nSollten Sie die Zahlung bereits veranlasst haben, betrachten Sie dieses Schreiben als gegenstandslos.\n\nMit freundlichen Grüßen\n${c.vereinName}`;
+}
+function setMahn(id,stufe){ const m=_cache.mitglieder[id]; if(!m) return; const rec=Object.assign({},m,{mahnStufe:stufe, mahnDatum:new Date().toISOString().slice(0,10)}); saveMember(rec); }
+function mahnMail(id,stufe){ const m=_cache.mitglieder[id]; if(!m) return;
+  if(!String(m.email||'').trim()){ toast('Keine E-Mail hinterlegt.','err'); return; }
+  const t=MAHN_TXT[stufe];
+  const href=`mailto:${encodeURIComponent(m.email)}?subject=${encodeURIComponent(t.betreff)}&body=${encodeURIComponent(mahnBody(m,stufe))}`;
+  window.location.href=href;
+  setMahn(id,stufe); render(); toast(`${t.gruss} an ${m.name} – Versanddatum gesetzt ✓`,'ok');
+}
+function mahnPdf(id){ const m=_cache.mitglieder[id]; if(!m) return; const c=sepaCfg();
+  const betrag=moneyDE(memberBeitrag(m));
+  const heute=fmtDateShort(new Date().toISOString().slice(0,10));
+  const body=mahnBody(m,3).replace(/\n/g,'<br>');
+  const html=`<!DOCTYPE html><html lang="de"><head><meta charset="utf-8"><title>Letzte Mahnung – ${esc(m.name||'')}</title>
+   <style>body{font-family:Arial,Helvetica,sans-serif;color:#222;max-width:680px;margin:40px auto;padding:0 24px;line-height:1.5}
+   .head{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #2f9e3f;padding-bottom:8px;margin-bottom:30px}
+   .head h1{color:#2f9e3f;font-size:20px;margin:0}.addr{margin:24px 0;white-space:pre-line}
+   .stufe{display:inline-block;background:#fdecea;color:#c0392b;border:1px solid #f0bcb6;border-radius:6px;padding:3px 10px;font-weight:700;font-size:13px;margin-bottom:18px}
+   .betrag{font-size:18px;font-weight:700;margin:18px 0}
+   @media print{body{margin:0}.noprint{display:none}}</style></head>
+   <body>
+    <div class="head"><h1>${esc(c.vereinName||'Verein der Gartenfreunde')}</h1><div style="text-align:right;font-size:13px;color:#555">${esc(heute)}</div></div>
+    <div class="addr">${esc(m.name||'')}${m.adresse?'\n'+esc(m.adresse):''}</div>
+    <div class="stufe">⏰ Letzte Mahnung – Mahnstufe 3</div>
+    <h2 style="font-size:16px">Mitgliedsbeitrag ${curYear()}</h2>
+    <p>${body}</p>
+    <div class="betrag">Offener Betrag: ${esc(betrag)}</div>
+    <div class="noprint" style="margin-top:30px"><button onclick="window.print()" style="padding:10px 18px;font-size:15px;background:#2f9e3f;color:#fff;border:0;border-radius:8px;cursor:pointer">🖨️ Drucken / als PDF speichern</button></div>
+   </body></html>`;
+  const w=window.open('','_blank'); if(!w){ toast('Bitte Popups erlauben.','err'); return; }
+  w.document.open(); w.document.write(html); w.document.close();
+  setMahn(id,3); render(); toast(`Letzte Mahnung für ${m.name} erstellt – Versanddatum gesetzt ✓`,'ok');
+}
+function markBezahlt(id){ const m=_cache.mitglieder[id]; if(!m) return;
+  const rec=Object.assign({},m,{bezahltJahr:curYear(), mahnStufe:0}); delete rec.mahnDatum;
+  saveMember(rec); render(); toast(`${m.name}: Beitrag ${curYear()} als bezahlt markiert ✓`,'ok');
+}
+function resetMahn(id){ const m=_cache.mitglieder[id]; if(!m) return;
+  const rec=Object.assign({},m,{mahnStufe:0}); delete rec.mahnDatum;
+  saveMember(rec); render(); toast('Mahnstufe zurückgesetzt.',''); }
+
 // ── Export für inline onclick ──────────────────────────────────────
 window.GV = {
-  logout, show, onSearch, close:closeModal,
+  logout, show, onSearch, statusFilter, close:closeModal,
   forgotPw, changePw:changePwModal, savePw, addUser:addUserModal, saveUser,
   newMember, editMember, openMember, saveMemberForm, askDelMember, mailAlle, doArchive,
   copySepa, copySepaForm, amtPrev, manageAemter,
+  saveSepaCfg, exportSepa, mahnMail, mahnPdf, markBezahlt, resetMahn,
   addParz:()=>$('m-parz').insertAdjacentHTML('beforeend', parzRowHtml({})),
   delParz:(btn)=>{ const r=btn.closest('.parz-row'); if(r) r.remove(); },
   addAmt:()=>$('m-amt').insertAdjacentHTML('beforeend', amtRowHtml({})),
