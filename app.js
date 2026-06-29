@@ -233,7 +233,6 @@ function viewMitglieder(){
     if(pa!==pb) return pa-pb;
     return String(a.name||'').localeCompare(String(b.name||''),'de',{sensitivity:'base'});
   });
-  const anyMail=members().filter(isAktiv).some(m=>m.email);
   const cards=active.map(memberCard).join('') || `<div class="muted">${_q?'Keine aktiven Treffer.':'Noch keine Mitglieder. Lege das erste an.'}</div>`;
   return `<div class="sec">
     <h2><span>👥 Mitglieder (${members().filter(isAktiv).length})</span>
@@ -242,7 +241,6 @@ function viewMitglieder(){
           <option value="" ${_statusFilter===''?'selected':''}>Status: Alle</option>
           ${STATUS_OPTS.concat([['verstorben','Verstorben']]).map(([v,l])=>`<option value="${v}" ${_statusFilter===v?'selected':''}>${l}</option>`).join('')}
         </select>
-        ${anyMail?`<button class="btn" title="Mail an alle aktiven (BCC)" onclick="GV.mailAlle()">✉️ Mail an alle</button>`:''}
         <button class="btn" title="Mitglieder & Bankdaten per Excel" onclick="GV.impExp()">⇅ Import/Export</button>
         <button class="btn primary" onclick="GV.newMember()">＋ Mitglied</button>
       </span></h2>
