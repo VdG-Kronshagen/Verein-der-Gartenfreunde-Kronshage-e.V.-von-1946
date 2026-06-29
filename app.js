@@ -189,14 +189,14 @@ function show(v){ _view=v; _q=''; const s=$('search'); if(s) s.value=''; render(
 function onSearch(v){ _q=String(v||'').toLowerCase().trim(); render(); }
 function statusFilter(v){ _statusFilter=v||''; render(); }
 function render(){
-  const fin=canSeeFinance();
-  // Beiträge-Tab nur für den Rechnungsführer (bzw. solange keiner gesetzt ist)
-  const tb=$('tab-beitraege'); if(tb) tb.style.display=fin?'':'none';
-  if(_view==='beitraege' && !fin) _view='mitglieder';
+  const tb=$('tab-beitraege');
   $('tab-mitglieder').classList.toggle('active', _view==='mitglieder');
   $('tab-verteiler').classList.toggle('active', _view==='verteiler');
+  const tg=$('tab-gartenordnung'); if(tg) tg.classList.toggle('active', _view==='gartenordnung');
   if(tb) tb.classList.toggle('active', _view==='beitraege');
-  $('view').innerHTML = _view==='verteiler' ? viewVerteiler() : (_view==='beitraege' ? viewBeitraege() : viewMitglieder());
+  $('view').innerHTML = _view==='verteiler' ? viewVerteiler()
+    : (_view==='gartenordnung' ? viewGartenordnung()
+    : (_view==='beitraege' ? viewBeitraege() : viewMitglieder()));
 }
 
 // ── Mitglieder ─────────────────────────────────────────────────────
@@ -212,7 +212,7 @@ function memberCard(m){ const amt=currentAmt(m), pz=currentParz(m);
         ${statusChip(m)}
         ${amt?`<span class="chip cur">🏅 ${esc(amt)}</span>`:''}
         ${pz?`<span class="chip">🌳 Parzelle ${esc(pz)}</span>`:''}
-        ${(canSeeFinance()&&m.sepaAktiv)?`<span class="chip">🏦 SEPA</span>`:''}
+        ${m.sepaAktiv?`<span class="chip">🏦 SEPA</span>`:''}
       </div>
     </div>`; }
 function leftCard(m){ return `<div class="card" style="cursor:pointer" onclick="GV.openMember('${m.id}')">
@@ -413,7 +413,6 @@ function memberForm(m){
    <button type="button" class="btn" onclick="GV.addAmt()">＋ Amt</button>
    <div class="muted" style="margin-top:4px">„bis" leer lassen = aktuelles Amt.</div>
 
-   ${canSeeFinance()?`
    <div class="sec-head" style="display:flex;justify-content:space-between;align-items:center">🏦 SEPA-Lastschrift <button type="button" class="btn" style="padding:4px 10px;font-size:12px" onclick="GV.copySepaForm()">⧉ Bankdaten kopieren</button></div>
    <label class="ck"><input type="checkbox" id="m-sepa" ${m.sepaAktiv?'checked':''}> SEPA-Lastschriftmandat erteilt</label>
    <div class="field"><label>Kontoinhaber <span style="font-weight:400;text-transform:none">(falls abweichend)</span></label><input id="m-inhaber" value="${esc(m.kontoinhaber||'')}"></div>
@@ -435,7 +434,7 @@ function memberForm(m){
      <div class="field" style="flex:1;min-width:150px"><label>Pforte nicht geöffnet (Anzahl Termine)</label><input id="m-pforte" type="number" step="1" min="0" value="${m.pforteCount?esc(m.pforteCount):''}" placeholder="0" oninput="GV.beitragPrev()"></div>
      <div class="field" style="flex:1;min-width:150px"><label>Ersetzte Wasseruhren (Frost)</label><input id="m-frost" type="number" step="1" min="0" value="${m.frostCount?esc(m.frostCount):''}" placeholder="0" oninput="GV.beitragPrev()"></div>
    </div>
-   <div id="m-beitrag-prev" class="beitrag-box">${beitragPrevHtml(m)}</div>`:''}
+   <div id="m-beitrag-prev" class="beitrag-box">${beitragPrevHtml(m)}</div>
 
    <div class="field"><label>Notiz</label><textarea id="m-note" rows="2">${esc(m.note||'')}</textarea></div>
    ${vBlock}
@@ -464,8 +463,13 @@ function memberDetailHtml(m){
    ${det('Notiz', m.note?esc(m.note):'')}
    ${det('🌳 Gartenparzellen (Verlauf)', parz)}
    ${det('🏅 Ämter (Verlauf)', aem)}
-   ${canSeeFinance()?det('🏦 SEPA-Lastschrift', sepa):''}
-   ${(canSeeFinance()&&isAktiv(m))?`<div class="dt"><div class="dt-l">💶 Beitrag ${esc(sepaCfg().beitragsjahr)}</div><div class="dt-v"><div class="beitrag-box">${beitragTableHtml(m)}</div><button class="btn" style="margin-top:8px" onclick="GV.beitragPdf('${m.id}')">🧾 Abrechnung drucken</button></div></div>`:''}
+   ${det('🏦 SEPA-Lastschrift', sepa)}
+   ${isAktiv(m)?`<div class="dt"><div class="dt-l">💶 Beitrag ${esc(sepaCfg().beitragsjahr)}</div><div class="dt-v"><div class="beitrag-box">${beitragTableHtml(m)}</div><button class="btn" style="margin-top:8px" onclick="GV.beitragPdf('${m.id}')">🧾 Rechnung / Abrechnung drucken</button></div></div>`:''}
+   ${isAktiv(m)?`<div class="dt"><div class="dt-l">⚖️ Gartenordnung</div><div class="dt-v">${
+     offeneVerstoesse(m).length
+       ? `<div class="vlist">${offeneVerstoesse(m).map(v=>vRow(m,v)).join('')}</div>`
+       : '<span class="muted">Keine offenen Verstöße.</span>'
+     }<button class="btn" style="margin-top:8px" onclick="GV.newVerstoss('${m.id}')">＋ Verstoß erfassen</button></div></div>`:''}
    <div class="actions-row" style="margin-top:18px">
      <button class="btn" onclick="GV.close()">Schließen</button>
      <button class="btn primary" onclick="GV.editMember('${m.id}')">✎ Bearbeiten</button>
@@ -480,24 +484,17 @@ function saveMemberForm(id){
     email, tel:val('m-tel'), adresse:val('m-adresse'), note:val('m-note'),
     parzellen:readParz(eintritt), aemter:readAemter(),
     status: ($('m-status')&&$('m-status').value)||'aktiv',
+    sepaAktiv:!!($('m-sepa')&&$('m-sepa').checked),
+    kontoinhaber:val('m-inhaber'), iban:val('m-iban'), bic:val('m-bic'),
+    mandatsref:val('m-mref'), mandatsdatum:val('m-mdat'),
+    flaeche:(val('m-flaeche')!==''? num(val('m-flaeche')) : ''),
+    wasserverbrauch:(val('m-wasser')!==''? num(val('m-wasser')) : ''),
+    gemeinschaftGeleistet:!!($('m-gemein')&&$('m-gemein').checked),
+    pforteCount:(val('m-pforte')!==''? num(val('m-pforte')) : ''),
+    frostCount:(val('m-frost')!==''? num(val('m-frost')) : ''),
     createdAt:(ex&&ex.createdAt)||Date.now() };
-  // Finanzdaten (SEPA + Beitrag) nur übernehmen, wenn das Formular sie zeigt
-  // (Rechnungsführer). Sonst die bestehenden Werte unverändert erhalten.
-  if(canSeeFinance()){
-    rec.sepaAktiv=!!($('m-sepa')&&$('m-sepa').checked);
-    rec.kontoinhaber=val('m-inhaber'); rec.iban=val('m-iban'); rec.bic=val('m-bic');
-    rec.mandatsref=val('m-mref'); rec.mandatsdatum=val('m-mdat');
-    rec.flaeche=(val('m-flaeche')!==''? num(val('m-flaeche')) : '');
-    rec.wasserverbrauch=(val('m-wasser')!==''? num(val('m-wasser')) : '');
-    rec.gemeinschaftGeleistet=!!($('m-gemein')&&$('m-gemein').checked);
-    rec.pforteCount=(val('m-pforte')!==''? num(val('m-pforte')) : '');
-    rec.frostCount=(val('m-frost')!==''? num(val('m-frost')) : '');
-  } else if(ex){
-    ['sepaAktiv','kontoinhaber','iban','bic','mandatsref','mandatsdatum','flaeche','wasserverbrauch','gemeinschaftGeleistet','pforteCount','frostCount']
-      .forEach(k=>{ if(ex[k]!=null) rec[k]=ex[k]; });
-  }
-  // Bestehende Beitrags-/Mahn-Daten erhalten (werden in der Beiträge-Ansicht gepflegt)
-  if(ex){ if(ex.bezahltJahr!=null) rec.bezahltJahr=ex.bezahltJahr; if(ex.mahnStufe!=null) rec.mahnStufe=ex.mahnStufe; if(ex.mahnDatum) rec.mahnDatum=ex.mahnDatum; if(ex.austrittsdatum&&isFormer(rec)) rec.austrittsdatum=ex.austrittsdatum; }
+  // Bestehende Beitrags-/Mahn-/Verstoß-Daten erhalten (werden anderswo gepflegt)
+  if(ex){ if(ex.bezahltJahr!=null) rec.bezahltJahr=ex.bezahltJahr; if(ex.mahnStufe!=null) rec.mahnStufe=ex.mahnStufe; if(ex.mahnDatum) rec.mahnDatum=ex.mahnDatum; if(Array.isArray(ex.verstoesse)) rec.verstoesse=ex.verstoesse; if(ex.austrittsdatum&&isFormer(rec)) rec.austrittsdatum=ex.austrittsdatum; }
   // Verteiler-Mitgliedschaft (vor close lesen)
   const want=new Set(Array.from(document.querySelectorAll('.m-vt:checked')).map(x=>x.value));
   const allBoxes=Array.from(document.querySelectorAll('.m-vt')).map(x=>x.value);
@@ -565,6 +562,124 @@ function saveListeForm(id){
 function askDelListe(id){ const v=_cache.verteiler[id]; if(!v) return; if(!confirm(`Verteiler „${v.name||''}" löschen?`)) return; delListe(id); render(); toast('Gelöscht.',''); }
 function verteilerMail(id){ const v=_cache.verteiler[id]; if(v) openMail(v.emails,'bcc'); }
 function verteilerCopy(id){ const v=_cache.verteiler[id]; if(v) copyText(normEmails(v.emails).join('; ')); }
+
+// ══════════════════════════════════════════════════════════════════
+//  Gartenordnung: Verstöße erfassen + mahnen (Vorstand, nicht Finanzen)
+// ══════════════════════════════════════════════════════════════════
+//  Das Mahnwesen gilt nicht nur für Beiträge, sondern auch für Verstöße
+//  gegen die Gartenordnung. Jeder Verstoß hat eine eigene Mahnstufe.
+//  Gespeichert je Mitglied unter m.verstoesse = [{id,datum,beschreibung,
+//  mahnStufe,mahnDatum,erledigt}].
+function memberVerstoesse(m){ return Array.isArray(m.verstoesse)?m.verstoesse:[]; }
+function offeneVerstoesse(m){ return memberVerstoesse(m).filter(v=>!v.erledigt); }
+function viewGartenordnung(){
+  const all=members().filter(isAktiv);
+  const withOpen=all.filter(m=>offeneVerstoesse(m).length)
+    .sort((a,b)=>{ const sa=Math.max(0,...offeneVerstoesse(a).map(v=>v.mahnStufe||0)), sb=Math.max(0,...offeneVerstoesse(b).map(v=>v.mahnStufe||0));
+      return sb-sa || String(a.name||'').localeCompare(String(b.name||''),'de'); });
+  const erledigtCount=all.reduce((n,m)=>n+memberVerstoesse(m).filter(v=>v.erledigt).length,0);
+  const offenCount=all.reduce((n,m)=>n+offeneVerstoesse(m).length,0);
+  const cards=withOpen.map(m=>{
+    const rows=offeneVerstoesse(m).map(v=>vRow(m,v)).join('');
+    return `<div class="card">
+      <h3 style="cursor:pointer" onclick="GV.openMember('${m.id}')">${esc(m.name||'(ohne Name)')}</h3>
+      <div class="vlist">${rows}</div>
+    </div>`;
+  }).join('') || `<div class="muted">🌿 Keine offenen Verstöße gegen die Gartenordnung.</div>`;
+  return `<div class="sec">
+    <h2><span>⚖️ Gartenordnung – Verstöße (${offenCount})</span>
+      <button class="btn primary" onclick="GV.newVerstoss()">＋ Verstoß erfassen</button></h2>
+    <div class="muted" style="margin-bottom:10px">Hier werden Verstöße gegen die Gartenordnung erfasst und gemahnt: Stufe 1 Hinweis/Aufforderung, Stufe 2 Abmahnung (beide per E-Mail), Stufe 3 Letzte Abmahnung als druckbares PDF. Versanddatum wird automatisch gesetzt.</div>
+    <div class="list">${cards}</div>
+  </div>`;
+}
+function vRow(m,v){
+  const st=v.mahnStufe||0;
+  const stTxt=st===0?'<span class="chip">erfasst</span>':`<span class="chip" style="background:#fdecea;border-color:#f0bcb6;color:#c0392b">${esc(VERSTOSS_TXT[st].gruss)}</span>`;
+  const dat=v.mahnDatum?`<span class="muted" style="font-size:12px"> · zuletzt ${fmtDateShort(v.mahnDatum)}</span>`:'';
+  const hasMail=String(m.email||'').trim();
+  return `<div class="vitem">
+    <div class="vhead"><span class="vbesch">${esc(v.beschreibung||'(ohne Beschreibung)')}</span><span class="muted" style="font-size:12px;white-space:nowrap">${v.datum?fmtDateShort(v.datum):''}</span></div>
+    <div class="sub" style="margin:2px 0 6px">${stTxt}${dat}</div>
+    <div class="actions" style="flex-wrap:wrap">
+      <button class="btn" ${hasMail?'':'disabled style="opacity:.5"'} title="${hasMail?'':'Keine E-Mail hinterlegt'}" onclick="GV.verstossMail('${m.id}','${v.id}',1)">✉️ Stufe 1: Hinweis</button>
+      <button class="btn" ${hasMail?'':'disabled style="opacity:.5"'} onclick="GV.verstossMail('${m.id}','${v.id}',2)">✉️ Stufe 2: Abmahnung</button>
+      <button class="btn" onclick="GV.verstossPdf('${m.id}','${v.id}')">🖨️ Stufe 3: Letzte Abmahnung (PDF)</button>
+      <button class="btn primary" onclick="GV.verstossErledigt('${m.id}','${v.id}')">✓ Erledigt</button>
+      <button class="x" title="Verstoß löschen" onclick="GV.verstossDel('${m.id}','${v.id}')">✕</button>
+    </div>
+  </div>`;
+}
+function newVerstoss(forId){
+  const opts=members().filter(isAktiv).sort((a,b)=>String(a.name).localeCompare(String(b.name),'de',{sensitivity:'base'}))
+    .map(m=>`<option value="${m.id}" ${forId===m.id?'selected':''}>${esc(m.name)}</option>`).join('');
+  const heute=new Date().toISOString().slice(0,10);
+  openModal(`<h3>＋ Verstoß gegen die Gartenordnung</h3>
+   <div class="field"><label>Mitglied *</label><select id="vs-member">${opts}</select></div>
+   <div class="field"><label>Datum</label><input id="vs-datum" type="date" value="${heute}"></div>
+   <div class="field"><label>Beschreibung des Verstoßes *</label><textarea id="vs-besch" rows="4" placeholder="z. B. Hecke nicht geschnitten, Wege nicht gepflegt, unerlaubte Bebauung …"></textarea></div>
+   <div class="actions-row"><button class="btn" onclick="GV.close()">Abbrechen</button>
+   <button class="btn primary" onclick="GV.saveVerstoss()">Erfassen</button></div>`, true);
+}
+function saveVerstoss(){
+  const mid=val('vs-member'); const m=mid?_cache.mitglieder[mid]:null;
+  if(!m){ toast('Bitte ein Mitglied wählen.','err'); return; }
+  const besch=val('vs-besch'); if(!besch){ toast('Bitte den Verstoß beschreiben.','err'); return; }
+  const v={ id:newId(), datum:val('vs-datum')||new Date().toISOString().slice(0,10), beschreibung:besch, mahnStufe:0, mahnDatum:'', erledigt:false };
+  const rec=Object.assign({}, m, { verstoesse:[...memberVerstoesse(m), v] });
+  saveMember(rec); closeModal(); _view='gartenordnung'; render(); toast('Verstoß erfasst ✓','ok');
+}
+function _vUpdate(mid,vid,fn){ const m=_cache.mitglieder[mid]; if(!m) return null;
+  const list=memberVerstoesse(m).map(v=>v.id===vid?Object.assign({},v):v);
+  const v=list.find(x=>x.id===vid); if(!v) return null; fn(v);
+  saveMember(Object.assign({}, m, {verstoesse:list})); return v;
+}
+const VERSTOSS_TXT={
+  1:{gruss:'Hinweis', betreff:'Hinweis – Einhaltung der Gartenordnung',
+     einl:'bei einer Kontrolle haben wir einen Verstoß gegen die Gartenordnung festgestellt. Wir bitten Sie, den unten genannten Punkt zeitnah zu beheben.'},
+  2:{gruss:'Abmahnung', betreff:'Abmahnung – Verstoß gegen die Gartenordnung',
+     einl:'trotz unseres Hinweises besteht der nachfolgend genannte Verstoß gegen die Gartenordnung weiterhin. Wir mahnen Sie hiermit ab und fordern Sie auf, den Zustand unverzüglich zu beheben.'},
+  3:{gruss:'Letzte Abmahnung', betreff:'Letzte Abmahnung – Verstoß gegen die Gartenordnung',
+     einl:'leider wurde der nachfolgend genannte Verstoß gegen die Gartenordnung trotz mehrfacher Aufforderung nicht behoben. Dies ist die letzte Abmahnung. Bei weiterem Ausbleiben einer Abhilfe behält sich der Vorstand vor, das Pachtverhältnis zu kündigen.'}
+};
+function verstossBody(m,v,stufe){ const c=sepaCfg(); const t=VERSTOSS_TXT[stufe];
+  return `Sehr geehrte/r ${m.name||'Gartenfreund/in'},\n\n${t.einl}\n\nFestgestellter Verstoß${v.datum?' (am '+fmtDateShort(v.datum)+')':''}:\n${v.beschreibung||''}\n\nBitte stellen Sie die Einhaltung der Gartenordnung sicher. Bei Rückfragen wenden Sie sich an den Vorstand.\n\nMit freundlichen Grüßen\n${c.vereinName||'Der Vorstand'}`;
+}
+function verstossMail(mid,vid,stufe){ const m=_cache.mitglieder[mid]; if(!m) return;
+  if(!String(m.email||'').trim()){ toast('Keine E-Mail hinterlegt.','err'); return; }
+  const v=memberVerstoesse(m).find(x=>x.id===vid); if(!v) return;
+  const t=VERSTOSS_TXT[stufe];
+  const href=`mailto:${encodeURIComponent(m.email)}?subject=${encodeURIComponent(t.betreff)}&body=${encodeURIComponent(verstossBody(m,v,stufe))}`;
+  window.location.href=href;
+  _vUpdate(mid,vid,x=>{ x.mahnStufe=stufe; x.mahnDatum=new Date().toISOString().slice(0,10); });
+  render(); toast(`${t.gruss} an ${m.name} – Versanddatum gesetzt ✓`,'ok');
+}
+function verstossPdf(mid,vid){ const m=_cache.mitglieder[mid]; if(!m) return; const c=sepaCfg();
+  const v=memberVerstoesse(m).find(x=>x.id===vid); if(!v) return;
+  const heute=fmtDateShort(new Date().toISOString().slice(0,10));
+  const body=verstossBody(m,v,3).replace(/\n/g,'<br>');
+  const html=`<!DOCTYPE html><html lang="de"><head><meta charset="utf-8"><title>Letzte Abmahnung – ${esc(m.name||'')}</title>
+   <style>body{font-family:Arial,Helvetica,sans-serif;color:#222;max-width:680px;margin:40px auto;padding:0 24px;line-height:1.5}
+   .head{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #2f9e3f;padding-bottom:8px;margin-bottom:30px}
+   .head h1{color:#2f9e3f;font-size:20px;margin:0}.addr{margin:24px 0;white-space:pre-line}
+   .stufe{display:inline-block;background:#fdecea;color:#c0392b;border:1px solid #f0bcb6;border-radius:6px;padding:3px 10px;font-weight:700;font-size:13px;margin-bottom:18px}
+   @media print{body{margin:0}.noprint{display:none}}</style></head>
+   <body>
+    <div class="head"><h1>${esc(c.vereinName||'Verein der Gartenfreunde Kronshagen e.V.')}</h1><div style="text-align:right;font-size:13px;color:#555">${esc(heute)}</div></div>
+    <div class="addr">${esc(m.name||'')}${m.adresse?'\n'+esc(m.adresse):''}</div>
+    <div class="stufe">⚖️ Letzte Abmahnung – Verstoß gegen die Gartenordnung</div>
+    <p>${body}</p>
+    <div class="noprint" style="margin-top:30px"><button onclick="window.print()" style="padding:10px 18px;font-size:15px;background:#2f9e3f;color:#fff;border:0;border-radius:8px;cursor:pointer">🖨️ Drucken / als PDF speichern</button></div>
+   </body></html>`;
+  const w=window.open('','_blank'); if(!w){ toast('Bitte Popups erlauben.','err'); return; }
+  w.document.open(); w.document.write(html); w.document.close();
+  _vUpdate(mid,vid,x=>{ x.mahnStufe=3; x.mahnDatum=new Date().toISOString().slice(0,10); });
+  render(); toast(`Letzte Abmahnung für ${m.name} erstellt – Versanddatum gesetzt ✓`,'ok');
+}
+function verstossErledigt(mid,vid){ _vUpdate(mid,vid,x=>{ x.erledigt=true; x.erledigtAm=new Date().toISOString().slice(0,10); }); render(); toast('Verstoß als erledigt markiert ✓','ok'); }
+function verstossDel(mid,vid){ const m=_cache.mitglieder[mid]; if(!m) return;
+  if(!confirm('Diesen Verstoß wirklich löschen?')) return;
+  saveMember(Object.assign({}, m, {verstoesse:memberVerstoesse(m).filter(v=>v.id!==vid)})); render(); toast('Verstoß gelöscht.',''); }
 
 // ══════════════════════════════════════════════════════════════════
 //  Beiträge: Einstellungen · SEPA-XML-Export (pain.008) · Mahnwesen
@@ -635,10 +750,10 @@ function viewBeitraege(){
   // — Zugriff: Rechnungsführer —
   const rf=rechnungsfuehrer();
   const rfBox=`<div class="sec">
-    <h2><span>🔒 Zugriff Finanzdaten</span></h2>
-    <div class="dt"><div class="dt-l">Rechnungsführer</div><div class="dt-v">${rf?esc(rf):'<span class="muted">– noch nicht festgelegt: aktuell sehen alle die Finanzdaten –</span>'}</div></div>
+    <h2><span>🔒 Rechnungsführer</span></h2>
+    <div class="dt"><div class="dt-l">Rechnungsführer</div><div class="dt-v">${rf?esc(rf):'<span class="muted">– noch nicht festgelegt –</span>'}</div></div>
     ${canManageRf()
-      ? `<div class="muted" style="margin:8px 0">Trage die Login-E-Mail des Rechnungsführers ein. Danach sieht <b>nur</b> dieser Account den Beiträge-Bereich (SEPA, Mahnwesen, Beträge). Der Wechsel kann später nur vom aktuellen Rechnungsführer vorgenommen werden.</div>
+      ? `<div class="muted" style="margin:8px 0">Trage die Login-E-Mail des Rechnungsführers ein. Nur er kann die <b>Stammeinstellungen</b> (Gläubiger-ID, Bankdaten, Beitragssätze) ändern und die <b>SEPA-Lastschrift-Datei</b> erzeugen. Rechnungen, Mahnwesen und SEPA-Eingaben am Mitglied stehen allen offen. Der Wechsel kann später nur vom aktuellen Rechnungsführer vorgenommen werden.</div>
          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
            <div class="field" style="flex:2;min-width:220px"><label>E-Mail des Rechnungsführers</label><input id="cfg-rf" type="email" value="${esc(rf)}" placeholder="kassenwart@beispiel.de"></div>
            <button class="btn primary" onclick="GV.saveRechnungsfuehrer()">Festlegen</button>
@@ -723,7 +838,29 @@ function viewBeitraege(){
     <div class="muted" style="margin-bottom:10px">Überfällig = aktives Mitglied ohne Zahlungseingang ${curYear()} nach Fälligkeit (${fmtDateShort(faelligDate())}). „Bezahlt" markiert den Beitrag ${curYear()} als beglichen und entfernt das Mitglied aus der Liste.</div>
     <div class="list">${mahnRows}</div>
   </div>`;
-  return rfBox + settings + sepaSec + mahnSec;
+  // — Rechnungen / Beiträge (für alle) —
+  const aktive=all.filter(isAktiv).sort((a,b)=>String(a.name||'').localeCompare(String(b.name||''),'de',{sensitivity:'base'}));
+  const totalSoll=aktive.reduce((s,m)=>s+memberBeitrag(m),0);
+  const rRows=aktive.map(m=>{ const paid=m.bezahltJahr===curYear();
+    return `<div class="card">
+      <h3 style="cursor:pointer" onclick="GV.openMember('${m.id}')">${esc(m.name||'(ohne Name)')} <span style="font-weight:600;color:var(--muted);font-size:13px">– ${moneyDE(memberBeitrag(m))}</span></h3>
+      <div class="sub">${paid?`<span class="chip cur">✓ bezahlt ${curYear()}</span>`:'<span class="chip">offen</span>'}</div>
+      <div class="actions" style="margin-top:8px;flex-wrap:wrap">
+        <button class="btn primary" onclick="GV.beitragPdf('${m.id}')">🧾 Rechnung erstellen</button>
+        ${paid?'':`<button class="btn" onclick="GV.markBezahlt('${m.id}')">✓ Bezahlt</button>`}
+      </div>
+    </div>`;
+  }).join('') || '<div class="muted">Keine aktiven Mitglieder.</div>';
+  const rechnungSec=`<div class="sec" style="margin-top:16px">
+    <h2><span>🧾 Rechnungen / Beiträge ${esc(c.beitragsjahr)} (${aktive.length})</span></h2>
+    <div class="muted" style="margin-bottom:10px">Beitrags-Soll gesamt: <b>${moneyDE(totalSoll)}</b>. „Rechnung erstellen" öffnet die druckbare Beitragsabrechnung mit allen Posten – für jedes Mitglied einzeln.</div>
+    <div class="list">${rRows}</div>
+  </div>`;
+  // Stammeinstellungen + Lastschrift-Erzeugung nur für den Rechnungsführer;
+  // Rechnungen, Mahnwesen und SEPA-Eingaben am Mitglied sind für alle offen.
+  const finSecs = canSeeFinance() ? (settings + sepaSec)
+    : `<div class="sec" style="margin-top:16px"><div class="muted">Stammeinstellungen (Gläubiger-ID, Bankdaten, Beitragssätze) und die Erzeugung der SEPA-Lastschrift-Datei sind dem Rechnungsführer vorbehalten.</div></div>`;
+  return rfBox + finSecs + rechnungSec + mahnSec;
 }
 function saveRechnungsfuehrer(){
   if(!canManageRf()){ toast('Nur der aktuelle Rechnungsführer darf das ändern.','err'); return; }
@@ -923,6 +1060,7 @@ window.GV = {
   copySepa, copySepaForm, amtPrev, manageAemter,
   saveSepaCfg, exportSepa, mahnMail, mahnPdf, markBezahlt, resetMahn, beitragPrev, beitragPdf,
   saveRechnungsfuehrer, clearRechnungsfuehrer,
+  newVerstoss, saveVerstoss, verstossMail, verstossPdf, verstossErledigt, verstossDel,
   addParz:()=>$('m-parz').insertAdjacentHTML('beforeend', parzRowHtml({})),
   delParz:(btn)=>{ const r=btn.closest('.parz-row'); if(r) r.remove(); },
   addAmt:()=>$('m-amt').insertAdjacentHTML('beforeend', amtRowHtml({})),
