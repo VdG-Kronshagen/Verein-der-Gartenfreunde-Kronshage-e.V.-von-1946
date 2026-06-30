@@ -1074,14 +1074,15 @@ function beitragPdf(id){ const m=_cache.mitglieder[id]; if(!m) return; const c=s
   const pflicht=grp('pflicht'), sonder=grp('sonder'), extra=grp('extra');
   const heute=fmtDateShort(new Date().toISOString().slice(0,10));
   const ortName=String(c.absenderOrt||'').replace(/^\d+\s*/,'')||'';
-  const absLine=[c.absenderName,c.absenderStrasse,c.absenderOrt].map(x=>String(x||'').trim()).filter(Boolean).join(' · ');
+  const absLine=String(c.absenderName||'Verein der Gartenfreunde e.V. von 1946 Kronshagen').trim();
+  const absUnten=[c.absenderZusatz,c.absenderStrasse,c.absenderOrt].map(x=>esc(String(x||'').trim())).filter(Boolean).join('<br>');
   const html=`<!DOCTYPE html><html lang="de"><head><meta charset="utf-8"><title>Rechnung Mitgliedsbeitrag ${esc(c.beitragsjahr)} – ${esc(m.name||'')}</title>
    <style>body{font-family:Arial,Helvetica,sans-serif;color:#222;max-width:680px;margin:40px auto;padding:0 24px;line-height:1.5}
    .bk{text-align:right;margin-bottom:30px}
    .bk .vn{color:#2f9e3f;font-weight:700;font-size:15px}
    .bk .va{font-size:12px;color:#444;line-height:1.45}
    .abs-klein{font-size:10px;color:#666;border-bottom:.5px solid #999;padding-bottom:2px;margin-bottom:3px}
-   .abs-zhd{font-size:12px;font-weight:700;color:#222;margin-bottom:24px}
+   .abs-zhd{font-size:12px;color:#333;line-height:1.45;margin-bottom:24px}
    .empf{font-size:14px;line-height:1.55;white-space:pre-line;margin-bottom:24px}
    .datum{text-align:right;font-size:13px;margin-bottom:20px}
    .betreff{font-weight:700;font-size:15px;margin-bottom:14px}
@@ -1097,7 +1098,7 @@ function beitragPdf(id){ const m=_cache.mitglieder[id]; if(!m) return; const c=s
     <div class="bk"><div class="vn">${esc(c.absenderName||'Verein der Gartenfreunde e.V. von 1946 Kronshagen')}</div>
       <div class="va">${[c.absenderZusatz,c.absenderStrasse,c.absenderOrt].map(x=>esc(String(x||'').trim())).filter(Boolean).join('<br>')}</div></div>
     <div class="abs-klein">${esc(absLine)}</div>
-    ${c.absenderZusatz?`<div class="abs-zhd">${esc(c.absenderZusatz)}</div>`:''}
+    ${absUnten?`<div class="abs-zhd">${absUnten}</div>`:''}
     <div class="empf">${esc(m.name||'')}${m.adresse?'\n'+esc(m.adresse):''}</div>
     <div class="datum">${esc(ortName?ortName+', den ':'')}${esc(heute)}</div>
     <div class="betreff">Rechnung Mitgliedsbeitrag ${esc(c.beitragsjahr)}</div>
