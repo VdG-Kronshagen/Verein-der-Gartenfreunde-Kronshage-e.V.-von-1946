@@ -1187,10 +1187,22 @@ function impExp(){
    <div class="muted" style="margin-bottom:8px">Passt direkt zur Bank-CSV mit den Spalten <b>Mitglieds Nr · Vorname · Nachname · Strasse · BIC Nr · IBAN Nr</b> (Reihenfolge egal, Spaltennamen werden erkannt). Zuordnung bevorzugt über die <b>Mitgliednummer</b>, sonst Vorname + Nachname. Gesetzt werden IBAN, BIC und die <b>Adresse (überschreibt die bestehende!)</b>; mit IBAN wird das SEPA-Mandat aktiviert. Nicht zugeordnete Zeilen werden gemeldet.</div>
    <label class="btn" style="cursor:pointer">🏦 Bankdaten-Datei wählen…<input type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange="GV.importBankdaten(this)"></label>
 
+   <div class="sec-head" style="margin-top:18px">🔢 Mitgliednummer aus Parzelle</div>
+   <div class="muted" style="margin-bottom:8px">Einmalige Aktion: setzt bei allen Mitgliedern mit Parzelle die <b>Mitgliednummer = aktuelle Parzellennummer</b> (überschreibt vorhandene Mitgliednummern).</div>
+   <button class="btn" onclick="GV.setMitgliednrFromParzelle()">Mitgliednummer = Parzellennummer setzen</button>
+
    <div id="ie-status" class="muted" style="margin-top:14px"></div>
    <div class="actions-row"><button class="btn" onclick="GV.close()">Schließen</button></div>`, true);
 }
 function ieStatus(t){ const el=$('ie-status'); if(el) el.innerHTML=t||''; }
+function setMitgliednrFromParzelle(){
+  const list=members().filter(m=>String(currentParz(m)||'').trim());
+  if(!list.length){ toast('Keine Mitglieder mit aktueller Parzelle gefunden.','err'); return; }
+  if(!confirm(`Bei ${list.length} Mitglied(ern) mit Parzelle die Mitgliednummer = Parzellennummer setzen?\nVorhandene Mitgliednummern werden dabei überschrieben.`)) return;
+  let n=0;
+  list.forEach(m=>{ const p=String(currentParz(m)).trim(); if(p && String(m.mitgliednr||'')!==p){ saveMember(Object.assign({}, m, {mitgliednr:p})); n++; } });
+  render(); ieStatus(`${n} Mitgliednummer(n) auf die Parzellennummer gesetzt.`); toast(`${n} Mitgliednummer(n) gesetzt ✓`,'ok');
+}
 async function exportMitglieder(){
   ieStatus('Excel wird erstellt …');
   try{
@@ -1330,7 +1342,7 @@ window.GV = {
   saveSepaCfg, exportSepa, exportLastschriftenXlsx, mahnMail, mahnPdf, markBezahlt, resetMahn, beitragPrev, beitragPdf,
   saveRechnungsfuehrer, clearRechnungsfuehrer,
   newVerstoss, saveVerstoss, verstossMail, verstossPdf, verstossErledigt, verstossDel,
-  impExp, exportMitglieder, importMitglieder, importBankdaten,
+  impExp, exportMitglieder, importMitglieder, importBankdaten, setMitgliednrFromParzelle,
   setFamilie:()=>{ document.querySelectorAll('.m-post').forEach(cb=>{ if(FAMILIE_AUS.includes(cb.value)) cb.checked=false; }); beitragPrev(); },
   parzPrefill:(inp)=>{ const g=parzGroesse(inp.value); const f=$('m-flaeche'); if(g!=null && f && (f.value===''||num(f.value,0)===0)){ f.value=g; beitragPrev(); } },
   addParz:()=>$('m-parz').insertAdjacentHTML('beforeend', parzRowHtml({})),
