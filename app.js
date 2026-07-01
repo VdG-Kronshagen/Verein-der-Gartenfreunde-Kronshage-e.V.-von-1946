@@ -394,7 +394,10 @@ function memberForm(m){
      <div class="muted" style="margin-top:4px">Wirkt nur mit hinterlegter E-Mail.</div></div>` : '';
   return `<h3>${m.id?'✎ Mitglied':'＋ Mitglied'}</h3>
    ${isFormer(m)?`<div style="background:#fdecea;border:1px solid #f0bcb6;border-radius:8px;padding:8px 10px;margin-bottom:12px;color:#c0392b;font-size:13px">${statusLabel(m)} – persönliche Daten wurden gelöscht. Name, Parzellen- &amp; Ämter-Verlauf bleiben erhalten.</div>`:''}
-   <div class="field"><label>Name *</label><input id="m-name" value="${esc(m.name||'')}"></div>
+   <div style="display:flex;gap:10px;flex-wrap:wrap">
+     <div class="field" style="flex:2;min-width:180px"><label>Name *</label><input id="m-name" value="${esc(m.name||'')}"></div>
+     <div class="field" style="flex:1;min-width:120px"><label>Mitgliednummer</label><input id="m-nr" value="${esc(m.mitgliednr||'')}" placeholder="z. B. 18"></div>
+   </div>
    <div style="display:flex;gap:10px;flex-wrap:wrap">
      <div class="field" style="flex:1;min-width:150px"><label>Status</label><select id="m-status">${STATUS_OPTS.concat(mStatus(m)==='verstorben'?[['verstorben','Verstorben']]:[]).map(([v,l])=>`<option value="${v}" ${mStatus(m)===v?'selected':''}>${l}</option>`).join('')}</select></div>
      <div class="field" style="flex:1;min-width:140px"><label>Eintrittsdatum</label><input id="m-eintritt" type="date" value="${esc(m.eintrittsdatum||'')}"></div>
@@ -459,6 +462,7 @@ function memberDetailHtml(m){
   const sepa = (m.sepaAktiv||m.iban) ? `${esc(m.kontoinhaber||m.name||'')}${m.iban?'<br>IBAN: '+esc(m.iban):''}${m.bic?'<br>BIC: '+esc(m.bic):''}${m.mandatsref?'<br>Mandat: '+esc(m.mandatsref)+(m.mandatsdatum?' vom '+fmtDateShort(m.mandatsdatum):''):''}${m.iban?`<br><button class="btn" style="margin-top:8px" onclick="GV.copySepa('${m.id}')">⧉ Bankdaten kopieren</button>`:''}` : '';
   return `<h3 style="margin-bottom:4px">${esc(m.name||'(ohne Name)')}</h3>
    ${isFormer(m)?`<div style="background:#fdecea;border:1px solid #f0bcb6;border-radius:8px;padding:6px 10px;margin-bottom:12px;color:#c0392b;font-size:13px">${statusLabel(m)}</div>`:'<div style="margin-bottom:14px"></div>'}
+   ${det('Mitgliednummer', m.mitgliednr?esc(m.mitgliednr):'')}
    ${det('Status', esc(STATUS_LABEL[mStatus(m)]||'Aktiv'))}
    ${det('Eintrittsdatum', m.eintrittsdatum?fmtDateShort(m.eintrittsdatum):'')}
    ${det('E-Mail', m.email?`<a href="${mailHref(m.email)}">${esc(m.email)}</a>`:'')}
@@ -484,7 +488,7 @@ function saveMemberForm(id){
   const email=val('m-email');
   const ex=id?_cache.mitglieder[id]:null;
   const eintritt=val('m-eintritt');
-  const rec={ id:id||newId(), name, eintrittsdatum:eintritt,
+  const rec={ id:id||newId(), name, mitgliednr:val('m-nr'), eintrittsdatum:eintritt,
     email, tel:val('m-tel'), adresse:val('m-adresse'), note:val('m-note'),
     parzellen:readParz(eintritt), aemter:readAemter(),
     status: ($('m-status')&&$('m-status').value)||'aktiv',
@@ -1145,10 +1149,16 @@ function xlDate(v){
   return s;
 }
 function normIban(v){ return String(v==null?'':v).replace(/\s+/g,'').toUpperCase(); }
-const MEMBER_COLS=['id','name','status','email','tel','adresse','eintrittsdatum',
+const MEMBER_COLS=['mitgliednr','id','name','status','email','tel','adresse','eintrittsdatum',
   'kontoinhaber','iban','bic','mandatsref','mandatsdatum','sepaAktiv',
   'flaeche','wasserverbrauch','gemeinschaftGeleistet','pforteCount','frostCount',
   'note','parzellen','aemter','bezahltJahr','mahnStufe','mahnDatum'];
+// Mitgliednummer aus einer importierten Zeile lesen (diverse Spaltennamen der Bank-CSV)
+function rowMitgliednr(row){
+  for(const k of Object.keys(row)){ if(/mitglied.?(s)?.?(nr|nummer)|^mgnr$|^mitgl\.?\s*nr\.?$/i.test(k)){ const v=String(row[k]||'').trim(); if(v) return v; } }
+  if(row.mitgliednr!=null && String(row.mitgliednr).trim()) return String(row.mitgliednr).trim();
+  return '';
+}
 function memberToRow(m){
   const row={};
   MEMBER_COLS.forEach(k=>{
@@ -1168,11 +1178,11 @@ function impExp(){
    <button class="btn primary" onclick="GV.exportMitglieder()">⬇️ Mitglieder exportieren</button>
 
    <div class="sec-head" style="margin-top:18px">⬆️ Mitglieder importieren</div>
-   <div class="muted" style="margin-bottom:8px">Excel mit denselben Spalten. Zeilen werden anhand <b>id</b> aktualisiert; ohne id wird nach <b>Name</b> abgeglichen, sonst neu angelegt. Leere Zellen lassen bestehende Werte unverändert.</div>
+   <div class="muted" style="margin-bottom:8px">Excel/CSV mit denselben Spalten. Zeilen werden anhand <b>Mitgliednummer</b> (sonst id, sonst Name) aktualisiert bzw. neu angelegt. Leere Zellen lassen bestehende Werte unverändert.</div>
    <label class="btn" style="cursor:pointer">📄 Datei wählen…<input type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange="GV.importMitglieder(this)"></label>
 
    <div class="sec-head" style="margin-top:18px">🏦 Bankdaten importieren</div>
-   <div class="muted" style="margin-bottom:8px">Excel mit Spalten <b>name</b> (oder <b>id</b>) und <b>iban</b>, optional <b>bic, kontoinhaber, mandatsref, mandatsdatum</b>. Trifft auf bestehende Mitglieder (per id oder Name); setzt nur die Bankfelder, alles andere bleibt erhalten. Mit IBAN wird das SEPA-Mandat aktiviert.</div>
+   <div class="muted" style="margin-bottom:8px">Excel/CSV mit <b>Mitgliednummer</b> (oder Name/id) und <b>iban</b>, optional <b>bic, kontoinhaber, mandatsref, mandatsdatum</b>. Die Bank-CSV mit der Mitgliednummer in der ersten Spalte passt direkt. Trifft auf bestehende Mitglieder (bevorzugt per Mitgliednummer); setzt nur die Bankfelder, alles andere bleibt erhalten. Mit IBAN wird das SEPA-Mandat aktiviert.</div>
    <label class="btn" style="cursor:pointer">🏦 Bankdaten-Datei wählen…<input type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange="GV.importBankdaten(this)"></label>
 
    <div id="ie-status" class="muted" style="margin-top:14px"></div>
@@ -1192,6 +1202,8 @@ async function exportMitglieder(){
   }catch(e){ console.error(e); ieStatus('<span style="color:#c0392b">'+esc((e&&e.message)||e)+'</span>'); }
 }
 function findMemberByNameOrId(row){
+  const nr=rowMitgliednr(row);
+  if(nr){ const m=members().find(x=>String(x.mitgliednr||'').trim()===nr); if(m) return m; }
   const id=String(row.id||'').trim();
   if(id && _cache.mitglieder[id]) return _cache.mitglieder[id];
   const nm=String(row.name||'').toLowerCase().trim();
@@ -1208,12 +1220,14 @@ async function importMitglieder(input){
     const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:''});
     let created=0, updated=0, skipped=0;
     rows.forEach(row=>{
-      if(!String(row.name||'').trim() && !String(row.id||'').trim()){ skipped++; return; }
+      const _nr=rowMitgliednr(row);
+      if(!String(row.name||'').trim() && !String(row.id||'').trim() && !_nr){ skipped++; return; }
       const ex=findMemberByNameOrId(row);
       const rec=Object.assign({}, ex||{});
       if(!rec.id) rec.id=newId();
       if(!rec.createdAt) rec.createdAt=Date.now();
       const setIf=(k,v)=>{ if(v!=null && String(v).trim()!=='') rec[k]=v; };
+      setIf('mitgliednr', _nr);
       setIf('name', row.name);
       setIf('status', String(row.status||'').toLowerCase().trim());
       setIf('email', row.email); setIf('tel', row.tel); setIf('adresse', row.adresse);
