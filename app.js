@@ -202,8 +202,8 @@ function render(){
 // ── Mitglieder ─────────────────────────────────────────────────────
 function matchM(m){ return [m.name,m.email,m.tel,m.adresse,m.note,(m.parzellen||[]).map(p=>p.nr).join(' '),(m.aemter||[]).map(a=>a.amt).join(' ')].map(x=>String(x||'').toLowerCase()).join(' ').includes(_q); }
 function memberCard(m){ const amt=currentAmt(m), pz=currentParz(m);
-  return `<div class="card" style="cursor:pointer" onclick="GV.openMember('${m.id}')">
-      <h3>${esc(m.name||'(ohne Name)')}</h3>
+  return `<div class="card${m.neu?' card-neu':''}" style="cursor:pointer" onclick="GV.openMember('${m.id}')">
+      <h3>${m.neu?'<span class="chip neu">🆕 NEU</span> ':''}${esc(m.name||'(ohne Name)')}</h3>
       ${(m.email||m.tel)?`<div class="links" style="margin-top:6px" onclick="event.stopPropagation()">
         ${m.email?`<a href="${mailHref(m.email)}">✉️ ${esc(m.email)}</a>`:''}
         ${m.tel?`<a href="${telHref(m.tel)}">📞 ${esc(m.tel)}</a>`:''}
@@ -1170,13 +1170,20 @@ function memberToRow(m){
     else v=(m[k]!=null?m[k]:'');
     row[k]=v;
   });
+  row['Parzelle']=currentParz(m);               // aktuelle Parzellen-Nr. (beim Import ignoriert)
   row['Beitrag €']=moneyDE(memberBeitrag(m));   // Info-Spalte (beim Import ignoriert)
   return row;
 }
 function impExp(){
   openModal(`<h3>⇅ Mitglieder · Import / Export (Excel)</h3>
    <div class="sec-head">⬇️ Export</div>
-   <div class="muted" style="margin-bottom:8px">Alle Mitglieder als Excel-Datei (eine Zeile je Mitglied, inkl. Bankdaten &amp; berechnetem Beitrag).</div>
+   <div class="muted" style="margin-bottom:8px">Alle Mitglieder als Excel-Datei (eine Zeile je Mitglied, inkl. Parzellen-Nr., Bankdaten &amp; berechnetem Beitrag).</div>
+   <label class="muted" style="display:block;margin-bottom:8px">Sortierung:
+     <select id="exp-sort" style="margin-left:6px">
+       <option value="mitgliednr">nach Mitgliedsnummer</option>
+       <option value="parzelle">nach Parzelle</option>
+     </select>
+   </label>
    <button class="btn primary" onclick="GV.exportMitglieder()">⬇️ Mitglieder exportieren</button>
 
    <div class="sec-head" style="margin-top:18px">⬆️ Mitglieder importieren</div>
@@ -1207,8 +1214,18 @@ async function exportMitglieder(){
   ieStatus('Excel wird erstellt …');
   try{
     const XLSX=await loadXLSX();
-    const rows=members().map(memberToRow);
-    const ws=XLSX.utils.json_to_sheet(rows,{header:MEMBER_COLS.concat(['Beitrag €'])});
+    const sortBy=(($('exp-sort')&&$('exp-sort').value)||'mitgliednr');
+    const keyOf = sortBy==='parzelle' ? (m=>currentParz(m)) : (m=>m.mitgliednr);
+    const list=members().slice().sort((a,b)=>{
+      const va=String(keyOf(a)==null?'':keyOf(a)).trim(), vb=String(keyOf(b)==null?'':keyOf(b)).trim();
+      if(va==='' && vb==='') return 0;
+      if(va==='') return 1;   // Leere ans Ende
+      if(vb==='') return -1;
+      return va.localeCompare(vb,'de',{numeric:true,sensitivity:'base'});
+    });
+    const rows=list.map(memberToRow);
+    const header=['mitgliednr','Parzelle'].concat(MEMBER_COLS.filter(k=>k!=='mitgliednr')).concat(['Beitrag €']);
+    const ws=XLSX.utils.json_to_sheet(rows,{header});
     const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Mitglieder');
     const d=new Date(),p=n=>String(n).padStart(2,'0');
     XLSX.writeFile(wb, `VdG-Mitglieder-${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}.xlsx`);
