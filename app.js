@@ -135,7 +135,7 @@ function provisionUser(email, pw){
       const cfg=firebase.app().options;
       const sec=(firebase.apps||[]).find(a=>a.name==='admin-prov') || firebase.initializeApp(cfg,'admin-prov');
       sec.auth().createUserWithEmailAndPassword(email, pw)
-        .then(()=>{ try{ sec.auth().signOut(); }catch(_){}; resolve(); })
+        .then(cred=>{ const uid=cred&&cred.user&&cred.user.uid; try{ sec.auth().signOut(); }catch(_){}; resolve(uid); })
         .catch(err=>{ try{ sec.auth().signOut(); }catch(_){}; reject(err); });
     }catch(e){ reject(e); }
   });
@@ -154,7 +154,9 @@ function saveUser(){
   if(pw.length<6){ toast('Start-Passwort: mindestens 6 Zeichen.','err'); return; }
   const reset=!!($('u-reset')&&$('u-reset').checked);
   toast('Lege Nutzer an …','');
-  provisionUser(email, pw).then(()=>{
+  provisionUser(email, pw).then(uid=>{
+    // Neuen Login für den Datenzugriff freischalten (Allowlist gv/erlaubt)
+    if(uid){ try{ firebase.database().ref('gv/erlaubt').child(uid).set(true); }catch(_){} }
     if(reset) firebase.auth().sendPasswordResetEmail(email).catch(()=>{});
     closeModal(); toast('Nutzer angelegt ✓'+(reset?' – Mail zum Passwort-Setzen verschickt.':''),'ok');
   }).catch(err=>{ const c=err&&err.code;
