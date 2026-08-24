@@ -1,7 +1,7 @@
 // Service Worker – macht die App installierbar (PWA) und lädt die Hülle
 // auch bei wackligem Netz. Firebase-Aufrufe werden NIE abgefangen (immer Netz).
-const CACHE = 'vdg-v19';
-const ASSETS = ['./','./index.html','./styles.css','./app.js','./firebase-config.js','./logo.jpg','./manifest.webmanifest'];
+const CACHE = 'vdg-v20';
+const ASSETS = ['./','./index.html','./styles.css','./app.js','./firebase-config.js','./logo.jpg','./manifest.webmanifest','./icon-192.png','./icon-512.png','./icon-maskable-512.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS).catch(()=>{})).then(()=>self.skipWaiting()));
