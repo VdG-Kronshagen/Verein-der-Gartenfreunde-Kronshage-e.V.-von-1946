@@ -1,88 +1,18 @@
 <!DOCTYPE html>
-<html lang="de">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>VdG Kronshagen – Mitglieder & Verteiler</title>
-  <link rel="stylesheet" href="styles.css?v=14">
-  <!-- PWA / installierbar auf Android & iOS -->
-  <link rel="manifest" href="manifest.webmanifest">
-  <meta name="theme-color" content="#2f9e3f">
-  <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <meta name="apple-mobile-web-app-title" content="VdG Kronshagen">
-  <link rel="apple-touch-icon" href="icon-512.png">
-  <link rel="icon" href="icon-192.png">
-</head>
-<body>
-
-  <!-- Login -->
-  <div id="login">
-    <form class="login-box" id="login-form" autocomplete="on">
-      <img src="logo.jpg?v=1" alt="VdG Kronshagen" class="login-logo" onerror="this.style.display='none'">
-      <h1 id="login-titel">Gartenverein</h1>
-      <p>Mitglieder &amp; E-Mail-Verteiler</p>
-      <label for="li-email">E-Mail</label>
-      <input id="li-email" type="email" autocomplete="username" required>
-      <label for="li-pw">Passwort</label>
-      <input id="li-pw" type="password" autocomplete="current-password" required>
-      <div class="login-err" id="login-err"></div>
-      <button class="btn primary" type="submit" style="width:100%;margin-top:18px;padding:11px">Anmelden</button>
-      <div style="text-align:center;margin-top:12px"><a href="#" onclick="GV.forgotPw();return false" style="font-size:13px;color:var(--primary-l)">Passwort vergessen?</a></div>
-      <div style="text-align:center;margin-top:16px;border-top:1px solid #e5e5e5;padding-top:14px"><a href="apk/VdG-Kronshagen.apk?v=1" download style="font-size:13px;color:var(--primary-l)">🤖 Android-App herunterladen</a></div>
-    </form>
-  </div>
-
-  <!-- App -->
-  <div id="app">
-    <div class="topbar">
-      <img src="logo.jpg?v=1" class="tb-logo" alt="" onerror="this.style.display='none'">
-      <span class="brand" id="brand">Gartenverein</span>
-      <span class="who" id="who"></span>
-      <button class="btn tb-act" title="Mein Passwort ändern" onclick="GV.changePw()">🔑 Passwort</button>
-      <button class="btn tb-act" title="Neuen Login anlegen" onclick="GV.addUser()">👤 Nutzer</button>
-      <button class="btn tb-act" onclick="GV.logout()">Abmelden</button>
-    </div>
-    <div class="bar">
-      <button class="tab" id="tab-mitglieder" onclick="GV.show('mitglieder')">👥 Mitglieder</button>
-      <button class="tab" id="tab-verteiler" onclick="GV.show('verteiler')">✉️ Verteiler</button>
-      <button class="tab" id="tab-gartenordnung" onclick="GV.show('gartenordnung')">⚖️ Gartenordnung</button>
-      <button class="tab" id="tab-beitraege" onclick="GV.show('beitraege')">💶 Beiträge</button>
-      <input class="search" id="search" type="search" placeholder="Suchen …" oninput="GV.onSearch(this.value)">
-    </div>
-    <div class="body" id="view"></div>
-  </div>
-
-  <!-- Modal + Toasts -->
-  <div id="modal-bg"><div class="modal" id="modal-body"></div></div>
-  <div id="toasts"></div>
-
-  <!-- Firebase SDK (compat) -->
-  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
-
-  <script src="firebase-config.js?v=1"></script>
-  <script src="app.js?v=30"></script>
-  <script>
-  // Auto-Update: prüft regelmäßig auf eine neue Version und lädt die App dann
-  // EINMAL automatisch neu – so erscheinen Änderungen ohne manuelles Neuladen.
-  if('serviceWorker' in navigator){
-    window.addEventListener('load', function(){
-      navigator.serviceWorker.register('sw.js').then(function(reg){
-        try{ reg.update(); }catch(e){}
-        setInterval(function(){ try{ reg.update(); }catch(e){} }, 60000);
-        reg.addEventListener('updatefound', function(){
-          var nw=reg.installing; if(!nw) return;
-          nw.addEventListener('statechange', function(){
-            // Neue Version installiert UND es lief bereits eine → einmal neu laden
-            if(nw.state==='installed' && navigator.serviceWorker.controller){ location.reload(); }
-          });
-        });
-      }).catch(function(){});
-    });
-  }
-  </script>
-</body>
-</html>
+<html lang="de"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>VdG Kronshagen</title>
+<style>body{font-family:system-ui,Arial,sans-serif;background:#f4f7f4;color:#2c3e2c;display:flex;min-height:100vh;margin:0;align-items:center;justify-content:center;text-align:center}
+.box{max-width:420px;padding:28px}img{width:96px;height:96px;object-fit:contain;margin-bottom:12px}
+h1{font-size:20px;margin:.3em 0}p{color:#5a6b5a;line-height:1.5}</style>
+</head><body><div class="box">
+<img src="logo.jpg" alt="" onerror="this.style.display='none'">
+<h1>Verein der Gartenfreunde Kronshagen</h1>
+<p>Die Mitgliederverwaltung wird nicht mehr online betrieben.<br>Sie läuft jetzt lokal beim Verein.</p>
+</div>
+<script>
+// Alten Service-Worker + Cache entfernen, damit Geräte die frühere App nicht mehr laden.
+if('serviceWorker' in navigator){navigator.serviceWorker.getRegistrations().then(rs=>rs.forEach(r=>r.unregister()));}
+if(window.caches){caches.keys().then(ks=>ks.forEach(k=>caches.delete(k)));}
+</script>
+</body></html>

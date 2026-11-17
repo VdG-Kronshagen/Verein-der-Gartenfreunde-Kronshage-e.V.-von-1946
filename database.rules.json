@@ -1,8 +1,0 @@
-{
-  "rules": {
-    "gv": {
-      ".read":  "auth != null && auth.token.firebase.sign_in_provider === 'password' && root.child('gv/erlaubt').child(auth.uid).val() === true",
-      ".write": "auth != null && auth.token.firebase.sign_in_provider === 'password' && root.child('gv/erlaubt').child(auth.uid).val() === true"
-    }
-  }
-}
